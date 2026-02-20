@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" build-on-make="true" name="POSApp-main:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/POSApp_main_jar</output-path>
+    <root id="archive" name="POSApp-main.jar">
+      <element id="module-output" name="POSApp-main" />
+    </root>
+  </artifact>
+</component>
