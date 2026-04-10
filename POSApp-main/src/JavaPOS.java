@@ -1,21 +1,33 @@
-
+import java.math.BigDecimal;
 import java.text.MessageFormat;
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.awt.Color;
+import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.GridLayout;
 import java.awt.Insets;
+import java.awt.Panel;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.sql.SQLException;
+import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
+import javax.swing.JPanel;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingConstants;
+import javax.swing.UIManager;
+import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableModel;
 
 /*
@@ -28,18 +40,49 @@ import javax.swing.table.DefaultTableModel;
  * @author Latitude 7480
  */
 public class JavaPOS extends javax.swing.JFrame {
-    private static final double TAX_RATE_PERCENT = 15.0;
-    private static final String CURRENCY_PATTERN = "R %.2f";
+    private static final BigDecimal TAX_RATE_PERCENT = new BigDecimal("15.0");
     private static final DateTimeFormatter RECEIPT_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private double lastCashAmount;
-    private double lastChangeAmount;
+    private final CartService cartService = new CartService(TAX_RATE_PERCENT);
+    private final ReceiptService receiptService = new ReceiptService(RECEIPT_TIME_FORMAT);
+    private final DatabaseManager databaseManager = new DatabaseManager();
+    private final ProductRepository productRepository = new ProductRepository(databaseManager);
+    private final UserRepository userRepository = new UserRepository(databaseManager);
+    private final InventoryRepository inventoryRepository = new InventoryRepository(databaseManager, productRepository);
+    private final SaleRepository saleRepository = new SaleRepository(databaseManager, productRepository, inventoryRepository);
+    private final ReceiptService archivedReceiptService = new ReceiptService(RECEIPT_TIME_FORMAT);
+    private final UserAccount currentUser;
+    private final SessionManager sessionManager;
+    private final JPanel headerPanel = new JPanel(null);
+    private final JLabel headerTitleLabel = new JLabel("Counter");
+    private final JLabel headerSubtitleLabel = new JLabel("Fast checkout, inventory awareness, and cleaner operator flow.");
+    private final JLabel sessionBadgeLabel = new JLabel();
+    private final JButton quickLookupButton = new JButton("Quick Add");
+    private JButton[] menuButtons;
+    private JButton[] keypadButtons;
+    private Product[] menuProducts;
+    private BigDecimal lastCashAmount = BigDecimal.ZERO;
+    private BigDecimal lastChangeAmount = BigDecimal.ZERO;
+    private final boolean persistenceReady;
 
     /**
      * Creates new form JavaPOS
      */
-    public JavaPOS() {
+    public JavaPOS(UserAccount currentUser) {
+        this(currentUser, false);
+    }
+
+    public JavaPOS(UserAccount currentUser, boolean persistenceReady) {
+        this.currentUser = currentUser;
+        this.persistenceReady = persistenceReady;
+        this.sessionManager = new SessionManager(currentUser, userRepository);
         initComponents();
+        if (!this.persistenceReady)
+        {
+            initializePersistence();
+        }
+        initializeHeader();
         configureUiTheme();
+        initializeAdminMenu();
         jTxtSubTotal.setEditable(false);
         jTxtTax.setEditable(false);
         jTxtTotal.setEditable(false);
@@ -51,54 +94,268 @@ public class JavaPOS extends javax.swing.JFrame {
                 applyResponsiveLayout();
             }
         });
+        sessionManager.startTracking();
         SwingUtilities.invokeLater(this::applyResponsiveLayout);
+    }
+
+    private void initializeHeader()
+    {
+        headerPanel.add(headerTitleLabel);
+        headerPanel.add(headerSubtitleLabel);
+        headerPanel.add(sessionBadgeLabel);
+        headerPanel.add(quickLookupButton);
+        quickLookupButton.addActionListener(evt -> openProductLookupDialog());
+        getContentPane().add(headerPanel);
+    }
+
+    private void initializePersistence()
+    {
+        try
+        {
+            databaseManager.initialize();
+            productRepository.seedDefaultsIfEmpty();
+            userRepository.seedDefaultsIfEmpty();
+        }
+        catch (SQLException ex)
+        {
+            JOptionPane.showMessageDialog(this, "Unable to initialize the local database.\n" + ex.getMessage(), "Database Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void initializeAdminMenu()
+    {
+        JMenuBar menuBar = new JMenuBar();
+        JMenu adminMenu = new JMenu("Admin");
+        JMenuItem manageProductsItem = new JMenuItem("Manage Products");
+        JMenuItem manageUsersItem = new JMenuItem("Manage Users");
+        JMenuItem manageInventoryItem = new JMenuItem("Manage Inventory");
+        JMenuItem viewSalesItem = new JMenuItem("Sales History");
+        JMenuItem closeoutItem = new JMenuItem("Closeout");
+        JMenuItem backupRestoreItem = new JMenuItem("Backup / Restore");
+        JMenu toolsMenu = new JMenu("Tools");
+        JMenuItem quickAddItem = new JMenuItem("Quick Add Product");
+        manageProductsItem.addActionListener(evt -> openProductManagementDialog());
+        manageUsersItem.addActionListener(evt -> openUserManagementDialog());
+        manageInventoryItem.addActionListener(evt -> openInventoryManagementDialog());
+        viewSalesItem.addActionListener(evt -> openSalesHistoryDialog());
+        closeoutItem.addActionListener(evt -> openCloseoutDialog());
+        backupRestoreItem.addActionListener(evt -> openBackupRestoreDialog());
+        quickAddItem.addActionListener(evt -> openProductLookupDialog());
+        adminMenu.add(manageProductsItem);
+        adminMenu.add(manageUsersItem);
+        adminMenu.add(manageInventoryItem);
+        adminMenu.add(viewSalesItem);
+        adminMenu.add(closeoutItem);
+        adminMenu.add(backupRestoreItem);
+        toolsMenu.add(quickAddItem);
+        boolean adminEnabled = currentUser != null && currentUser.isAdmin();
+        manageProductsItem.setEnabled(adminEnabled);
+        manageUsersItem.setEnabled(adminEnabled);
+        manageInventoryItem.setEnabled(adminEnabled);
+        closeoutItem.setEnabled(adminEnabled);
+        backupRestoreItem.setEnabled(adminEnabled);
+        menuBar.add(adminMenu);
+        menuBar.add(toolsMenu);
+        setJMenuBar(menuBar);
+    }
+
+    private void openProductManagementDialog()
+    {
+        if (!ensureAdminAccess("manage products"))
+        {
+            return;
+        }
+        if (!sessionManager.requireActiveSession(this, "manage products"))
+        {
+            return;
+        }
+        ProductManagementDialog dialog = new ProductManagementDialog(this, productRepository, this::loadMenuProducts);
+        dialog.setVisible(true);
+    }
+
+    private void openUserManagementDialog()
+    {
+        if (!ensureAdminAccess("manage users"))
+        {
+            return;
+        }
+        if (!sessionManager.requireActiveSession(this, "manage users"))
+        {
+            return;
+        }
+        UserManagementDialog dialog = new UserManagementDialog(this, userRepository);
+        dialog.setVisible(true);
+    }
+
+    private void openInventoryManagementDialog()
+    {
+        if (!ensureAdminAccess("manage inventory"))
+        {
+            return;
+        }
+        if (!sessionManager.requireActiveSession(this, "manage inventory"))
+        {
+            return;
+        }
+        InventoryManagementDialog dialog = new InventoryManagementDialog(this, productRepository, inventoryRepository, this::loadMenuProducts, sessionManager);
+        dialog.setVisible(true);
+    }
+
+    private void openSalesHistoryDialog()
+    {
+        if (!sessionManager.requireActiveSession(this, "view sales history"))
+        {
+            return;
+        }
+        SalesHistoryDialog dialog = new SalesHistoryDialog(this, saleRepository, archivedReceiptService, currentUser, sessionManager);
+        dialog.setVisible(true);
+    }
+
+    private void openCloseoutDialog()
+    {
+        if (!ensureAdminAccess("run closeout"))
+        {
+            return;
+        }
+        if (!sessionManager.requireActiveSession(this, "run closeout"))
+        {
+            return;
+        }
+        CloseoutDialog dialog = new CloseoutDialog(this, saleRepository);
+        dialog.setVisible(true);
+    }
+
+    private void openBackupRestoreDialog()
+    {
+        if (!ensureAdminAccess("use backup and restore"))
+        {
+            return;
+        }
+        if (!sessionManager.requireActiveSession(this, "use backup and restore"))
+        {
+            return;
+        }
+        BackupRestoreDialog dialog = new BackupRestoreDialog(this, databaseManager, this::reloadAfterRestore);
+        dialog.setVisible(true);
+    }
+
+    private void openProductLookupDialog()
+    {
+        if (!sessionManager.requireActiveSession(this, "add products"))
+        {
+            return;
+        }
+        ProductLookupDialog dialog = new ProductLookupDialog(this, productRepository, this::addItemToBill);
+        dialog.setVisible(true);
+    }
+
+    private void reloadAfterRestore()
+    {
+        clearOrder(true);
+        loadMenuProducts();
+    }
+
+    private boolean ensureAdminAccess(String action)
+    {
+        if (currentUser != null && currentUser.isAdmin())
+        {
+            return true;
+        }
+
+        JOptionPane.showMessageDialog(this, "You do not have permission to " + action + ".");
+        return false;
     }
 
     private void configureUiTheme()
     {
-        Color appBackground = new Color(244, 247, 252);
-        Color panelBackground = new Color(255, 255, 255);
-        Color menuButtonBackground = new Color(238, 242, 252);
-        Color keypadBackground = new Color(236, 240, 245);
-        Color primaryAction = new Color(22, 115, 255);
-        Color neutralAction = new Color(59, 72, 89);
-        Color dangerAction = new Color(194, 55, 60);
+        UIManager.put("ToolTip.background", new Color(29, 40, 56));
+        UIManager.put("ToolTip.foreground", Color.WHITE);
 
-        setTitle("POS App - Checkout");
+        Color appBackground = new Color(241, 244, 248);
+        Color panelBackground = new Color(255, 252, 247);
+        Color chromeBackground = new Color(27, 38, 58);
+        Color menuButtonBackground = new Color(245, 247, 250);
+        Color keypadBackground = new Color(236, 240, 245);
+        Color primaryAction = new Color(18, 117, 90);
+        Color neutralAction = new Color(55, 68, 92);
+        Color dangerAction = new Color(166, 51, 65);
+        Color lineColor = new Color(205, 214, 226);
+        Color accentColor = new Color(223, 145, 62);
+
+        setTitle("POS App - Checkout" + (currentUser == null ? "" : " | " + currentUser.getUsername() + " (" + currentUser.getRole() + ")"));
         setResizable(true);
-        setMinimumSize(new Dimension(860, 760));
+        setMinimumSize(new Dimension(980, 780));
         getContentPane().setBackground(appBackground);
+
+        headerPanel.setBackground(chromeBackground);
+        headerPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(14, 22, 35)),
+            BorderFactory.createEmptyBorder(16, 20, 16, 20)
+        ));
+        headerTitleLabel.setForeground(Color.WHITE);
+        headerTitleLabel.setFont(new Font("Segoe UI Semibold", Font.BOLD, 30));
+        headerSubtitleLabel.setForeground(new Color(198, 209, 224));
+        headerSubtitleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        sessionBadgeLabel.setOpaque(true);
+        sessionBadgeLabel.setBackground(new Color(42, 59, 86));
+        sessionBadgeLabel.setForeground(new Color(231, 238, 246));
+        sessionBadgeLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        sessionBadgeLabel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(94, 120, 158)),
+            BorderFactory.createEmptyBorder(8, 14, 8, 14)
+        ));
+        sessionBadgeLabel.setText(currentUser == null ? "Guest" : currentUser.getUsername() + " | " + currentUser.getRole());
+        sessionBadgeLabel.setFont(new Font("Segoe UI Semibold", Font.BOLD, 12));
+
+        styleButtons(new JButton[]{quickLookupButton}, new Color(255, 255, 255), chromeBackground);
+        quickLookupButton.setFont(new Font("Segoe UI Semibold", Font.BOLD, 13));
+        quickLookupButton.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(214, 223, 235)),
+            BorderFactory.createEmptyBorder(10, 16, 10, 16)
+        ));
 
         jPanel1.setBackground(panelBackground);
         jPanel2.setBackground(panelBackground);
-        jPanel3.setBackground(panelBackground);
+        jPanel3.setBackground(new Color(232, 237, 244));
         jPanel4.setBackground(panelBackground);
         jPanel5.setBackground(panelBackground);
         jPanel6.setBackground(panelBackground);
 
-        jPanel1.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(new Color(208, 216, 228)), "Menu"));
-        jPanel2.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(new Color(208, 216, 228)), "Cash Keypad"));
-        jPanel3.setBorder(BorderFactory.createLineBorder(new Color(208, 216, 228)));
-        jPanel5.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(new Color(208, 216, 228)), "Payment"));
-        jPanel6.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(new Color(208, 216, 228)), "Totals"));
+        jPanel1.setBorder(createSectionBorder("Product Grid", accentColor));
+        jPanel2.setBorder(createSectionBorder("Cash Pad", accentColor));
+        jPanel3.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(lineColor),
+            BorderFactory.createEmptyBorder(10, 10, 10, 10)
+        ));
+        jPanel5.setBorder(createSectionBorder("Payment", accentColor));
+        jPanel6.setBorder(createSectionBorder("Order Summary", accentColor));
+        jPanel4.setVisible(false);
 
         styleTextField(jTxtCash, false);
         styleTextField(jTxtChange, true);
         styleTextField(jTxtSubTotal, true);
         styleTextField(jTxtTax, true);
         styleTextField(jTxtTotal, true);
+        styleSummaryLabel(jLabel1);
+        styleSummaryLabel(jLabel2);
+        styleSummaryLabel(jLabel3);
+        styleSummaryLabel(jLabel4);
+        styleSummaryLabel(jLabel5);
+        styleSummaryLabel(jLabel6);
 
-        jTable1.setRowHeight(30);
+        jTable1.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        jTable1.setRowHeight(38);
         jTable1.setShowHorizontalLines(true);
         jTable1.setShowVerticalLines(false);
-        jTable1.setGridColor(new Color(224, 229, 238));
-        jTable1.setSelectionBackground(new Color(216, 234, 255));
-        jTable1.setSelectionForeground(new Color(20, 33, 61));
+        jTable1.setGridColor(new Color(229, 234, 241));
+        jTable1.setSelectionBackground(new Color(219, 236, 255));
+        jTable1.setSelectionForeground(new Color(22, 36, 49));
         jTable1.getTableHeader().setReorderingAllowed(false);
-        jTable1.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 14));
-        jTable1.getTableHeader().setBackground(new Color(231, 238, 248));
+        jTable1.getTableHeader().setFont(new Font("Segoe UI Semibold", Font.BOLD, 13));
+        jTable1.getTableHeader().setBackground(new Color(242, 245, 249));
+        jTable1.getTableHeader().setForeground(new Color(35, 44, 56));
         jScrollPane1.getViewport().setBackground(panelBackground);
-        jScrollPane1.setBorder(BorderFactory.createLineBorder(new Color(208, 216, 228)));
+        jScrollPane1.setBorder(createSectionBorder("Current Order", accentColor));
 
         styleButtons(
             new JButton[]{jBtnStillWater, jBtnLargePizza, jButton11, jButton13, jButton14, jButton16, jButton17, jButton18,
@@ -109,46 +366,64 @@ public class JavaPOS extends javax.swing.JFrame {
         setUniformButtonSize(
             new JButton[]{jBtnStillWater, jBtnLargePizza, jButton11, jButton13, jButton14, jButton16, jButton17, jButton18,
                 jButton19, jButton20, jButton21, jButton22, jButton23, jButton24, jButton25, jButton26, jButton27, jButton28},
-            198,
-            70
+            216,
+            76
         );
-        applyMenuButtonLabels();
-        applyMenuCategoryColors();
+        menuButtons = new JButton[]{jBtnStillWater, jBtnLargePizza, jButton11, jButton13, jButton14, jButton16, jButton17, jButton18,
+            jButton19, jButton20, jButton21, jButton22, jButton23, jButton24, jButton25, jButton26, jButton27, jButton28};
+        menuProducts = new Product[menuButtons.length];
+        rebuildProductGrid();
+        loadMenuProducts();
 
         styleButtons(new JButton[]{jBtn0, jBtn1, jBtn2, jBtn3, jBtn4, jBtn5, jBtn6, jBtn7, jBtn8, jBtn9, jBtnDot},
             keypadBackground,
             new Color(33, 40, 54));
-        setUniformButtonSize(new JButton[]{jBtn0, jBtn1, jBtn2, jBtn3, jBtn4, jBtn5, jBtn6, jBtn7, jBtn8, jBtn9, jBtnDot, jBtnC}, 88, 88);
+        setUniformButtonSize(new JButton[]{jBtn0, jBtn1, jBtn2, jBtn3, jBtn4, jBtn5, jBtn6, jBtn7, jBtn8, jBtn9, jBtnDot, jBtnC}, 92, 92);
         styleButtons(new JButton[]{jBtnC}, new Color(255, 228, 230), new Color(147, 36, 40));
+        keypadButtons = new JButton[]{jBtn7, jBtn8, jBtn9, jBtn4, jBtn5, jBtn6, jBtn1, jBtn2, jBtn3, jBtn0, jBtnDot, jBtnC};
+        rebuildCashPad();
 
         Color actionText = new Color(20, 33, 61);
-        styleButtons(new JButton[]{jBtnPay}, new Color(201, 226, 255), actionText);
+        styleButtons(new JButton[]{jBtnPay}, new Color(208, 240, 230), new Color(17, 79, 61));
         styleButtons(new JButton[]{jBtnPrint, jBtnReset, jBtnRemove}, new Color(225, 233, 244), actionText);
         styleButtons(new JButton[]{jBtnExit}, new Color(255, 220, 220), new Color(127, 20, 20));
-        setUniformButtonSize(new JButton[]{jBtnPay, jBtnPrint, jBtnReset, jBtnRemove, jBtnExit}, 148, 44);
+        setUniformButtonSize(new JButton[]{jBtnPay, jBtnPrint, jBtnReset, jBtnRemove, jBtnExit}, 152, 48);
 
         jBtnPay.setText("Complete Sale");
-        jBtnReset.setText("Clear Order");
+        jBtnReset.setText("New Order");
         jBtnRemove.setText("Remove Item");
-        jBtnPrint.setText("Print Bill");
+        jBtnPrint.setText("Print Slip");
         jBtnExit.setText("Exit");
+        jBtnPay.setFont(new Font("Segoe UI Semibold", Font.BOLD, 16));
 
         jCboPayment.setBackground(Color.WHITE);
         jCboPayment.setForeground(new Color(33, 40, 54));
-        jCboPayment.setBorder(BorderFactory.createLineBorder(new Color(196, 206, 221)));
+        jCboPayment.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(196, 206, 221)),
+            BorderFactory.createEmptyBorder(6, 8, 6, 8)
+        ));
+        jCboPayment.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        rebuildCheckoutPanels();
     }
 
     private void applyResponsiveLayout()
     {
-        int padding = 12;
-        int gap = 10;
+        int padding = 14;
+        int gap = 12;
         int width = getContentPane().getWidth();
         int height = getContentPane().getHeight();
+        int headerHeight = 88;
 
         if (width <= 0 || height <= 0)
         {
             return;
         }
+
+        headerPanel.setBounds(padding, padding, width - (padding * 2), headerHeight);
+        headerTitleLabel.setBounds(20, 12, 260, 34);
+        headerSubtitleLabel.setBounds(22, 46, 480, 22);
+        quickLookupButton.setBounds(headerPanel.getWidth() - 132, 22, 112, 40);
+        sessionBadgeLabel.setBounds(headerPanel.getWidth() - 336, 22, 190, 40);
 
         boolean compactMode = width < 1120;
         boolean mediumMode = width >= 1120 && width < 1480;
@@ -159,7 +434,8 @@ public class JavaPOS extends javax.swing.JFrame {
             int compactGap = 8;
             int contentX = compactPadding;
             int contentWidth = width - (compactPadding * 2);
-            int contentHeight = height - (compactPadding * 2);
+            int contentTop = headerHeight + (padding * 2);
+            int contentHeight = height - contentTop - compactPadding;
 
             int keypadHeight = Math.max(160, (int) (contentHeight * 0.19));
             int tableHeight = Math.max(170, (int) (contentHeight * 0.23));
@@ -186,7 +462,7 @@ public class JavaPOS extends javax.swing.JFrame {
                 }
             }
 
-            int y = compactPadding;
+            int y = contentTop;
             jPanel2.setBounds(contentX, y, contentWidth, keypadHeight);
             y += keypadHeight + compactGap;
             jScrollPane1.setBounds(contentX, y, contentWidth, tableHeight);
@@ -214,7 +490,7 @@ public class JavaPOS extends javax.swing.JFrame {
         int menuWidth = availableWidth - leftWidth;
 
         int minBottomHeight = mediumMode ? 240 : (ultraWideMode ? 280 : 260);
-        int availableHeight = height - (padding * 2) - gap;
+        int availableHeight = height - headerHeight - (padding * 3) - gap;
         double topRatio = mediumMode ? 0.58 : (ultraWideMode ? 0.65 : 0.62);
         int topHeight = Math.max(330, (int) (availableHeight * topRatio));
         topHeight = Math.min(topHeight, availableHeight - minBottomHeight);
@@ -230,7 +506,7 @@ public class JavaPOS extends javax.swing.JFrame {
 
         int leftX = padding;
         int rightX = leftX + leftWidth + gap;
-        int topY = padding;
+        int topY = padding + headerHeight + gap;
         int bottomY = topY + topHeight + gap;
 
         jPanel2.setBounds(leftX, topY, keypadWidth, topHeight);
@@ -248,16 +524,17 @@ public class JavaPOS extends javax.swing.JFrame {
         {
             button.setBackground(background);
             button.setForeground(foreground);
-            button.setFont(new Font("Segoe UI", Font.BOLD, 12));
+            button.setFont(new Font("Segoe UI Semibold", Font.BOLD, 12));
             button.setFocusPainted(false);
             button.setOpaque(true);
             button.setContentAreaFilled(true);
             button.setBorderPainted(true);
             button.setHorizontalAlignment(SwingConstants.CENTER);
             button.setVerticalAlignment(SwingConstants.CENTER);
+            button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             button.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(196, 206, 221)),
-                BorderFactory.createEmptyBorder(4, 6, 4, 6)
+                BorderFactory.createEmptyBorder(8, 10, 8, 10)
             ));
             button.setMargin(new Insets(2, 6, 2, 6));
         }
@@ -272,67 +549,176 @@ public class JavaPOS extends javax.swing.JFrame {
         }
     }
 
-    private void applyMenuButtonLabels()
+    private void rebuildProductGrid()
     {
-        setMenuButtonLabel(jBtnStillWater, "Still Water", "R12.50", "DRINK");
-        setMenuButtonLabel(jBtnLargePizza, "Large Pizza", "R108.50", "MAIN");
-        setMenuButtonLabel(jButton11, "Chocolate Shake", "R14.50", "DRINK");
-        setMenuButtonLabel(jButton13, "Orange Juice", "R14.50", "DRINK");
-        setMenuButtonLabel(jButton14, "Bubblegum Shake", "R14.50", "DRINK");
-        setMenuButtonLabel(jButton16, "Strawberry Shake", "R14.50", "DRINK");
-        setMenuButtonLabel(jButton17, "Pasta", "R40.00", "MAIN");
-        setMenuButtonLabel(jButton18, "Chicken Burger", "R45.50", "MAIN");
-        setMenuButtonLabel(jButton19, "Cappuccino", "R15.00", "DRINK");
-        setMenuButtonLabel(jButton20, "Vanilla Cake", "R20.00", "DESSERT");
-        setMenuButtonLabel(jButton21, "600g Ribs", "R60.50", "MAIN");
-        setMenuButtonLabel(jButton22, "Coffee", "R15.00", "DRINK");
-        setMenuButtonLabel(jButton23, "Red Velvet Cake", "R20.00", "DESSERT");
-        setMenuButtonLabel(jButton24, "Vanilla Shake", "R14.50", "DRINK");
-        setMenuButtonLabel(jButton25, "Beef Burger", "R45.50", "MAIN");
-        setMenuButtonLabel(jButton26, "Chocolate Cake", "R20.00", "DESSERT");
-        setMenuButtonLabel(jButton27, "Hake Fish", "R35.50", "SEAFOOD");
-        setMenuButtonLabel(jButton28, "Prawns", "R80.00", "SEAFOOD");
+        jPanel1.removeAll();
+        jPanel1.setLayout(new GridLayout(6, 3, 12, 12));
+        jPanel1.setBorder(createSectionBorder("Product Grid", new Color(223, 145, 62)));
+
+        for (JButton button : menuButtons)
+        {
+            jPanel1.add(button);
+        }
+
+        jPanel1.revalidate();
+        jPanel1.repaint();
     }
 
-    private void applyMenuCategoryColors()
+    private void rebuildCashPad()
     {
-        Color drinksBg = new Color(228, 243, 255);
-        Color drinksBorder = new Color(153, 196, 235);
-        Color mainsBg = new Color(234, 250, 236);
-        Color mainsBorder = new Color(161, 211, 164);
-        Color dessertsBg = new Color(255, 241, 228);
-        Color dessertsBorder = new Color(229, 186, 135);
-        Color seafoodBg = new Color(236, 246, 255);
-        Color seafoodBorder = new Color(168, 200, 231);
+        jPanel2.removeAll();
+        jPanel2.setLayout(new GridLayout(4, 3, 10, 10));
+        jPanel2.setBorder(createSectionBorder("Cash Pad", new Color(223, 145, 62)));
 
-        styleMenuButtonCategory(jBtnStillWater, drinksBg, drinksBorder);
-        styleMenuButtonCategory(jButton11, drinksBg, drinksBorder);
-        styleMenuButtonCategory(jButton13, drinksBg, drinksBorder);
-        styleMenuButtonCategory(jButton14, drinksBg, drinksBorder);
-        styleMenuButtonCategory(jButton16, drinksBg, drinksBorder);
-        styleMenuButtonCategory(jButton19, drinksBg, drinksBorder);
-        styleMenuButtonCategory(jButton22, drinksBg, drinksBorder);
-        styleMenuButtonCategory(jButton24, drinksBg, drinksBorder);
+        for (JButton button : keypadButtons)
+        {
+            jPanel2.add(button);
+        }
 
-        styleMenuButtonCategory(jBtnLargePizza, mainsBg, mainsBorder);
-        styleMenuButtonCategory(jButton17, mainsBg, mainsBorder);
-        styleMenuButtonCategory(jButton18, mainsBg, mainsBorder);
-        styleMenuButtonCategory(jButton21, mainsBg, mainsBorder);
-        styleMenuButtonCategory(jButton25, mainsBg, mainsBorder);
-
-        styleMenuButtonCategory(jButton20, dessertsBg, dessertsBorder);
-        styleMenuButtonCategory(jButton23, dessertsBg, dessertsBorder);
-        styleMenuButtonCategory(jButton26, dessertsBg, dessertsBorder);
-
-        styleMenuButtonCategory(jButton27, seafoodBg, seafoodBorder);
-        styleMenuButtonCategory(jButton28, seafoodBg, seafoodBorder);
+        jPanel2.revalidate();
+        jPanel2.repaint();
     }
 
-    private void setMenuButtonLabel(JButton button, String itemName, String price, String category)
+    private void rebuildCheckoutPanels()
     {
-        String label = String.format("[%s] %s - %s", category, itemName, price);
+        rebuildTotalsPanel();
+        rebuildPaymentPanel();
+        rebuildBottomPanel();
+    }
+
+    private void rebuildTotalsPanel()
+    {
+        jPanel6.removeAll();
+        jPanel6.setLayout(new GridLayout(3, 2, 10, 10));
+        jPanel6.setBorder(createSectionBorder("Order Summary", new Color(223, 145, 62)));
+
+        jPanel6.add(jLabel1);
+        jPanel6.add(jTxtSubTotal);
+        jPanel6.add(jLabel3);
+        jPanel6.add(jTxtTax);
+        jPanel6.add(jLabel2);
+        jPanel6.add(jTxtTotal);
+        jPanel6.revalidate();
+        jPanel6.repaint();
+    }
+
+    private void rebuildPaymentPanel()
+    {
+        JPanel paymentFields = new JPanel(new GridLayout(3, 2, 10, 10));
+        paymentFields.setOpaque(false);
+        paymentFields.add(jLabel4);
+        paymentFields.add(jCboPayment);
+        paymentFields.add(jLabel5);
+        paymentFields.add(jTxtCash);
+        paymentFields.add(jLabel6);
+        paymentFields.add(jTxtChange);
+
+        JPanel actionButtons = new JPanel(new GridLayout(3, 2, 10, 10));
+        actionButtons.setOpaque(false);
+        actionButtons.add(jBtnPay);
+        actionButtons.add(jBtnReset);
+        actionButtons.add(jBtnPrint);
+        actionButtons.add(jBtnRemove);
+        actionButtons.add(jBtnExit);
+        actionButtons.add(new JPanel());
+
+        jPanel5.removeAll();
+        jPanel5.setLayout(new GridLayout(1, 2, 16, 16));
+        jPanel5.setBorder(createSectionBorder("Payment", new Color(223, 145, 62)));
+        jPanel5.add(paymentFields);
+        jPanel5.add(actionButtons);
+        jPanel5.revalidate();
+        jPanel5.repaint();
+    }
+
+    private void rebuildBottomPanel()
+    {
+        jPanel3.removeAll();
+        jPanel3.setLayout(new GridLayout(1, 2, 12, 12));
+        jPanel3.add(jPanel5);
+        jPanel3.add(jPanel6);
+        jPanel3.revalidate();
+        jPanel3.repaint();
+    }
+
+    private void loadMenuProducts()
+    {
+        if (menuButtons == null)
+        {
+            return;
+        }
+
+        try
+        {
+            List<Product> products = productRepository.findMenuProducts(menuButtons.length);
+            for (int index = 0; index < menuButtons.length; index++)
+            {
+                JButton button = menuButtons[index];
+                if (index < products.size())
+                {
+                    Product product = products.get(index);
+                    menuProducts[index] = product;
+                    setMenuButtonLabel(button, product.getName(), MoneyUtils.format(product.getUnitPrice()), product.getCategory(), product.getStockQuantity());
+                    applyMenuCategoryStyle(button, product.getCategory());
+                    button.setEnabled(product.getStockQuantity() > 0);
+                }
+                else
+                {
+                    menuProducts[index] = null;
+                    button.setText("Unused Slot");
+                    button.setToolTipText("Add a product in Admin > Manage Products");
+                    styleMenuButtonCategory(button, new Color(245, 246, 248), new Color(210, 214, 220));
+                    button.setEnabled(false);
+                }
+            }
+        }
+        catch (SQLException ex)
+        {
+            JOptionPane.showMessageDialog(this, "Unable to load products from the local database.\n" + ex.getMessage(), "Database Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void applyMenuCategoryStyle(JButton button, String category)
+    {
+        Color background;
+        Color borderColor;
+
+        switch (category)
+        {
+            case "DRINK":
+                background = new Color(228, 243, 255);
+                borderColor = new Color(153, 196, 235);
+                break;
+            case "DESSERT":
+                background = new Color(255, 241, 228);
+                borderColor = new Color(229, 186, 135);
+                break;
+            case "SEAFOOD":
+                background = new Color(236, 246, 255);
+                borderColor = new Color(168, 200, 231);
+                break;
+            case "MAIN":
+            default:
+                background = new Color(234, 250, 236);
+                borderColor = new Color(161, 211, 164);
+                break;
+        }
+
+        styleMenuButtonCategory(button, background, borderColor);
+    }
+
+    private void setMenuButtonLabel(JButton button, String itemName, String price, String category, int stockQuantity)
+    {
+        String stockLabel = stockQuantity > 0 ? "Stock: " + stockQuantity : "OUT";
+        String label = String.format(
+            "<html><div style='text-align:center; line-height:1.35;'><div style='font-size:10px; letter-spacing:0.08em; color:#6b7688;'>%s</div><div style='font-size:13px; font-weight:700; color:#1f2b3a; margin:4px 0;'>%s</div><div style='font-size:12px; font-weight:600; color:#12654f;'>%s</div><div style='font-size:10px; color:#6b7688; margin-top:4px;'>%s</div></div></html>",
+            category,
+            itemName,
+            price,
+            stockLabel
+        );
         button.setText(label);
-        button.setToolTipText("[" + category + "] " + itemName + " - " + price);
+        button.setToolTipText("[" + category + "] " + itemName + " - " + price + " - Stock: " + stockQuantity);
     }
 
     private void styleMenuButtonCategory(JButton button, Color background, Color borderColor)
@@ -347,9 +733,10 @@ public class JavaPOS extends javax.swing.JFrame {
     private void styleTextField(JTextField textField, boolean readOnly)
     {
         textField.setHorizontalAlignment(SwingConstants.RIGHT);
+        textField.setFont(new Font("Segoe UI Semibold", Font.BOLD, 17));
         textField.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(new Color(196, 206, 221)),
-            BorderFactory.createEmptyBorder(4, 8, 4, 8)
+            BorderFactory.createEmptyBorder(8, 10, 8, 10)
         ));
         if (readOnly)
         {
@@ -359,6 +746,26 @@ public class JavaPOS extends javax.swing.JFrame {
         {
             textField.setBackground(Color.WHITE);
         }
+    }
+
+    private void styleSummaryLabel(JLabel label)
+    {
+        label.setFont(new Font("Segoe UI Semibold", Font.BOLD, 15));
+        label.setForeground(new Color(48, 60, 79));
+    }
+
+    private javax.swing.border.Border createSectionBorder(String title, Color accentColor)
+    {
+        TitledBorder titledBorder = BorderFactory.createTitledBorder(
+            BorderFactory.createLineBorder(new Color(205, 214, 226)),
+            title
+        );
+        titledBorder.setTitleFont(new Font("Segoe UI Semibold", Font.BOLD, 14));
+        titledBorder.setTitleColor(accentColor.darker());
+        return BorderFactory.createCompoundBorder(
+            titledBorder,
+            BorderFactory.createEmptyBorder(12, 12, 12, 12)
+        );
     }
 
     /**
@@ -1095,25 +1502,41 @@ public class JavaPOS extends javax.swing.JFrame {
     }// </editor-fold>//GEN-END:initComponents
     //===================================Function===========================
     
-    private void addItemToBill(String itemName, double price)
+    private void addItemToBill(Product product)
     {
-        DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
-        for (int row = 0; row < model.getRowCount(); row++)
+        if (product == null)
         {
-            Object currentItem = model.getValueAt(row, 0);
-            if (itemName.equals(currentItem))
+            JOptionPane.showMessageDialog(this, "Product is not assigned to this menu button.");
+            return;
+        }
+
+        int quantityAlreadyInCart = cartService.getQuantityForProduct(product.getName());
+        if (quantityAlreadyInCart >= product.getStockQuantity())
+        {
+            JOptionPane.showMessageDialog(this, "Not enough stock for " + product.getName() + ". Available: " + product.getStockQuantity());
+            return;
+        }
+
+        cartService.addProduct(product);
+        refreshCartTable();
+        ItemCost();
+    }
+
+    private void addItemFromButton(JButton button)
+    {
+        if (menuButtons == null || menuProducts == null)
+        {
+            return;
+        }
+
+        for (int index = 0; index < menuButtons.length; index++)
+        {
+            if (menuButtons[index] == button)
             {
-                int quantity = Integer.parseInt(model.getValueAt(row, 1).toString());
-                double amount = Double.parseDouble(model.getValueAt(row, 2).toString());
-                model.setValueAt(quantity + 1, row, 1);
-                model.setValueAt(amount + price, row, 2);
-                ItemCost();
+                addItemToBill(menuProducts[index]);
                 return;
             }
         }
-
-        model.addRow(new Object[]{itemName, 1, price});
-        ItemCost();
     }
 
     private void appendCashInput(String input)
@@ -1121,73 +1544,69 @@ public class JavaPOS extends javax.swing.JFrame {
         jTxtCash.setText(jTxtCash.getText() + input);
     }
 
-    private double getSubTotalAmount()
+    private void refreshCartTable()
     {
-        double sum = 0;
+        DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
+        model.setRowCount(0);
 
-        for (int i = 0; i < jTable1.getRowCount(); i++)
+        for (CartItem item : cartService.getItems())
         {
-            sum += Double.parseDouble(jTable1.getValueAt(i, 2).toString());
+            model.addRow(new Object[]{
+                item.getProduct().getName(),
+                item.getQuantity(),
+                item.getLineTotal().doubleValue()
+            });
         }
-
-        return sum;
     }
 
-    private String formatCurrency(double amount)
+    private CartTotals getCartTotals()
     {
-        return String.format(CURRENCY_PATTERN, amount);
+        return cartService.calculateTotals();
     }
 
     private void clearOrder(boolean clearCashAndChange)
     {
-        DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
-        model.setRowCount(0);
+        cartService.clear();
+        refreshCartTable();
         ItemCost();
 
         if (clearCashAndChange)
         {
             jTxtCash.setText("");
             jTxtChange.setText("");
+            lastCashAmount = BigDecimal.ZERO;
+            lastChangeAmount = BigDecimal.ZERO;
         }
     }
 
     private String buildReceipt(String paymentMethod)
     {
-        DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
-        double subTotal = getSubTotalAmount();
-        double tax = (subTotal * TAX_RATE_PERCENT) / 100;
-        double total = subTotal + tax;
-        StringBuilder receipt = new StringBuilder();
-
-        receipt.append("POS RECEIPT\n");
-        receipt.append("Date: ").append(LocalDateTime.now().format(RECEIPT_TIME_FORMAT)).append('\n');
-        receipt.append("Payment: ").append(paymentMethod).append("\n\n");
-        receipt.append("Items:\n");
-
-        for (int row = 0; row < model.getRowCount(); row++)
-        {
-            String item = model.getValueAt(row, 0).toString();
-            int qty = Integer.parseInt(model.getValueAt(row, 1).toString());
-            double amount = Double.parseDouble(model.getValueAt(row, 2).toString());
-            receipt.append(String.format("- %s x%d  %s%n", item, qty, formatCurrency(amount)));
-        }
-
-        receipt.append('\n');
-        receipt.append("Subtotal: ").append(formatCurrency(subTotal)).append('\n');
-        receipt.append("Tax: ").append(formatCurrency(tax)).append('\n');
-        receipt.append("Total: ").append(formatCurrency(total)).append('\n');
-
-        if ("Cash".equals(paymentMethod))
-        {
-            receipt.append("Cash: ").append(formatCurrency(lastCashAmount)).append('\n');
-            receipt.append("Change: ").append(formatCurrency(lastChangeAmount)).append('\n');
-        }
-
-        return receipt.toString();
+        return receiptService.buildReceipt(
+            cartService.getItems(),
+            getCartTotals(),
+            paymentMethod,
+            lastCashAmount,
+            lastChangeAmount
+        );
     }
 
     private void completeSale(String paymentMethod)
     {
+        if (!sessionManager.requireActiveSession(this, "complete the sale"))
+        {
+            return;
+        }
+        try
+        {
+            saleRepository.saveSale(cartService.getItems(), getCartTotals(), paymentMethod, lastCashAmount, lastChangeAmount);
+            loadMenuProducts();
+        }
+        catch (SQLException ex)
+        {
+            JOptionPane.showMessageDialog(this, "Unable to save this sale.\n" + ex.getMessage(), "Database Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
         String receipt = buildReceipt(paymentMethod);
         JOptionPane.showMessageDialog(this, receipt, "Receipt", JOptionPane.INFORMATION_MESSAGE);
         clearOrder(true);
@@ -1195,13 +1614,11 @@ public class JavaPOS extends javax.swing.JFrame {
 
     public void ItemCost()
     {
-        double subTotal = getSubTotalAmount();
-        double tax = (subTotal * TAX_RATE_PERCENT) / 100;
-        double total = subTotal + tax;
+        CartTotals totals = getCartTotals();
 
-        jTxtSubTotal.setText(formatCurrency(subTotal));
-        jTxtTax.setText(formatCurrency(tax));
-        jTxtTotal.setText(formatCurrency(total));
+        jTxtSubTotal.setText(MoneyUtils.format(totals.getSubtotal()));
+        jTxtTax.setText(MoneyUtils.format(totals.getTax()));
+        jTxtTotal.setText(MoneyUtils.format(totals.getTotal()));
     }        
 
     public boolean Change()
@@ -1213,10 +1630,10 @@ public class JavaPOS extends javax.swing.JFrame {
             return false;
         }
 
-        double cash;
+        BigDecimal cash;
         try
         {
-            cash = Double.parseDouble(cashText);
+            cash = new BigDecimal(cashText);
         }
         catch (NumberFormatException ex)
         {
@@ -1224,26 +1641,24 @@ public class JavaPOS extends javax.swing.JFrame {
             return false;
         }
 
-        if (cash < 0)
+        if (cash.compareTo(BigDecimal.ZERO) < 0)
         {
             JOptionPane.showMessageDialog(this, "Cash amount cannot be negative.");
             return false;
         }
 
-        double subTotal = getSubTotalAmount();
-        double tax = (subTotal * TAX_RATE_PERCENT) / 100;
-        double totalDue = subTotal + tax;
+        CartTotals totals = getCartTotals();
 
-        if (cash < totalDue)
+        if (cash.compareTo(totals.getTotal()) < 0)
         {
             JOptionPane.showMessageDialog(this, "Insufficient cash for this order.");
             return false;
         }
 
-        double change = cash - totalDue;
-        lastCashAmount = cash;
+        BigDecimal change = MoneyUtils.scale(cash.subtract(totals.getTotal()));
+        lastCashAmount = MoneyUtils.scale(cash);
         lastChangeAmount = change;
-        jTxtChange.setText(formatCurrency(change));
+        jTxtChange.setText(MoneyUtils.format(change));
         return true;
     }        
     
@@ -1268,11 +1683,11 @@ public class JavaPOS extends javax.swing.JFrame {
     }//GEN-LAST:event_jBtnResetActionPerformed
 
     private void jBtnRemoveActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jBtnRemoveActionPerformed
-      DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
       int RemoveItem = jTable1.getSelectedRow();
       if (RemoveItem >= 0)
       {
-          model.removeRow(RemoveItem);
+          cartService.removeItem(RemoveItem);
+          refreshCartTable();
       }
       else
       {
@@ -1297,7 +1712,7 @@ public class JavaPOS extends javax.swing.JFrame {
     }//GEN-LAST:event_jBtnRemoveActionPerformed
 
     private void jBtnPayActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jBtnPayActionPerformed
-        if (jTable1.getRowCount() == 0)
+        if (cartService.isEmpty())
         {
             JOptionPane.showMessageDialog(this, "Add at least one item before paying.");
             return;
@@ -1316,8 +1731,8 @@ public class JavaPOS extends javax.swing.JFrame {
         {
                 jTxtChange.setText("");
                 jTxtCash.setText("");
-                lastCashAmount = 0;
-                lastChangeAmount = 0;
+                lastCashAmount = BigDecimal.ZERO;
+                lastChangeAmount = BigDecimal.ZERO;
                 completeSale(jCboPayment.getSelectedItem().toString());
         }
     }//GEN-LAST:event_jBtnPayActionPerformed
@@ -1327,15 +1742,15 @@ public class JavaPOS extends javax.swing.JFrame {
     }//GEN-LAST:event_jBtn6ActionPerformed
 
     private void jButton17ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton17ActionPerformed
-        addItemToBill("Pasta", 40.0);
+        addItemFromButton(jButton17);
     }//GEN-LAST:event_jButton17ActionPerformed
 
     private void jButton19ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton19ActionPerformed
-        addItemToBill("Cappuccino", 15.0);
+        addItemFromButton(jButton19);
     }//GEN-LAST:event_jButton19ActionPerformed
 
     private void jButton20ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton20ActionPerformed
-        addItemToBill("Vanilla Cake", 20.0);
+        addItemFromButton(jButton20);
     }//GEN-LAST:event_jButton20ActionPerformed
 
     private void jBtn1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jBtn1ActionPerformed
@@ -1388,63 +1803,63 @@ public class JavaPOS extends javax.swing.JFrame {
     }//GEN-LAST:event_jBtnCActionPerformed
 
     private void jBtnStillWaterActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jBtnStillWaterActionPerformed
-        addItemToBill("Still Water", 12.50);
+        addItemFromButton(jBtnStillWater);
     }//GEN-LAST:event_jBtnStillWaterActionPerformed
 
     private void jBtnLargePizzaActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jBtnLargePizzaActionPerformed
-        addItemToBill("Large Pizza", 108.50);
+        addItemFromButton(jBtnLargePizza);
     }//GEN-LAST:event_jBtnLargePizzaActionPerformed
 
     private void jButton11ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton11ActionPerformed
-        addItemToBill("Chocolate Milkshake", 14.50);
+        addItemFromButton(jButton11);
     }//GEN-LAST:event_jButton11ActionPerformed
 
     private void jButton24ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton24ActionPerformed
-        addItemToBill("Vanilla Milkshake", 14.50);
+        addItemFromButton(jButton24);
     }//GEN-LAST:event_jButton24ActionPerformed
 
     private void jButton13ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton13ActionPerformed
-        addItemToBill("Orange Juice", 14.50);
+        addItemFromButton(jButton13);
     }//GEN-LAST:event_jButton13ActionPerformed
 
     private void jButton14ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton14ActionPerformed
-        addItemToBill("Bubblegum Milkshake", 14.50);
+        addItemFromButton(jButton14);
     }//GEN-LAST:event_jButton14ActionPerformed
 
     private void jButton16ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton16ActionPerformed
-        addItemToBill("Stawberry Milkshake ", 14.50);
+        addItemFromButton(jButton16);
     }//GEN-LAST:event_jButton16ActionPerformed
 
     private void jButton26ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton26ActionPerformed
-        addItemToBill("Chocolate Cake", 20.00);
+        addItemFromButton(jButton26);
     }//GEN-LAST:event_jButton26ActionPerformed
 
     private void jButton18ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton18ActionPerformed
-        addItemToBill("Chicken Burger", 45.50);
+        addItemFromButton(jButton18);
     }//GEN-LAST:event_jButton18ActionPerformed
 
     private void jButton21ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton21ActionPerformed
-        addItemToBill("Ribs", 60.50);
+        addItemFromButton(jButton21);
     }//GEN-LAST:event_jButton21ActionPerformed
 
     private void jButton22ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton22ActionPerformed
-        addItemToBill("Coffee", 15.0);
+        addItemFromButton(jButton22);
     }//GEN-LAST:event_jButton22ActionPerformed
 
     private void jButton23ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton23ActionPerformed
-        addItemToBill("Red Velvet Cake", 20.0);
+        addItemFromButton(jButton23);
     }//GEN-LAST:event_jButton23ActionPerformed
 
     private void jButton25ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton25ActionPerformed
-        addItemToBill("Beef Burger", 45.50);
+        addItemFromButton(jButton25);
     }//GEN-LAST:event_jButton25ActionPerformed
 
     private void jButton28ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton28ActionPerformed
-        addItemToBill("Prawns", 80.0);
+        addItemFromButton(jButton28);
     }//GEN-LAST:event_jButton28ActionPerformed
 
     private void jButton27ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton27ActionPerformed
-        addItemToBill("Hake Fish", 35.50);
+        addItemFromButton(jButton27);
     }//GEN-LAST:event_jButton27ActionPerformed
     private JFrame frame;
     private void jBtnExitActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jBtnExitActionPerformed
@@ -1481,7 +1896,33 @@ public class JavaPOS extends javax.swing.JFrame {
         /* Create and display the form */
         java.awt.EventQueue.invokeLater(new Runnable() {
             public void run() {
-                new JavaPOS().setVisible(true);
+                long startupStart = System.currentTimeMillis();
+                DatabaseManager databaseManager = new DatabaseManager();
+                UserRepository userRepository = new UserRepository(databaseManager);
+                try
+                {
+                    System.out.println("JavaPOS startup: initializing database...");
+                    databaseManager.initialize();
+                    userRepository.seedDefaultsIfEmpty();
+                    System.out.println("JavaPOS startup: database ready in " + (System.currentTimeMillis() - startupStart) + " ms");
+                }
+                catch (SQLException ex)
+                {
+                    JOptionPane.showMessageDialog(null, "Unable to initialize login data.\n" + ex.getMessage(), "Startup Error", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+
+                System.out.println("JavaPOS startup: opening login dialog...");
+                LoginDialog loginDialog = new LoginDialog(null, userRepository);
+                UserAccount user = loginDialog.authenticate();
+                if (user == null)
+                {
+                    return;
+                }
+
+                System.out.println("JavaPOS startup: opening main window...");
+                new JavaPOS(user, true).setVisible(true);
+                System.out.println("JavaPOS startup: main window ready in " + (System.currentTimeMillis() - startupStart) + " ms");
             }
         });
     }

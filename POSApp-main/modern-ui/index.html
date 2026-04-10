@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>JavaPOS Modern UI</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div id="loginOverlay" class="login-overlay">
+        <div class="login-card">
+            <p class="panel-kicker">Web sign-in</p>
+            <h1>JavaPOS access</h1>
+            <p class="login-copy">Sign in to unlock the cashier and admin tools in the web UI.</p>
+            <div class="login-form">
+                <label class="search-field">
+                    <span>Username</span>
+                    <input id="loginUsername" type="text" autocomplete="username" placeholder="admin or cashier">
+                </label>
+                <label class="search-field">
+                    <span>Password</span>
+                    <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password">
+                </label>
+                <label id="newPasswordWrap" class="search-field hidden">
+                    <span>New password</span>
+                    <input id="loginNewPassword" type="password" autocomplete="new-password" placeholder="Required for first login">
+                </label>
+                <button id="loginButton" class="primary-action">Sign in</button>
+                <div id="loginMessage" class="checkout-notice hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-shell">
+        <div class="top-strip">
+            <div class="brand-lockup">
+                <div class="brand-mark">JP</div>
+                <div>
+                    <p class="eyebrow top-strip-label">JavaPOS Retail Suite</p>
+                    <strong class="brand-title">Counter workspace</strong>
+                </div>
+            </div>
+            <p class="top-strip-copy">Faster product lookup, clearer cashier flow, and a more polished back-office view.</p>
+        </div>
+
+        <header class="hero">
+            <div class="hero-copy">
+                <p class="eyebrow">JavaPOS / Counter Mode</p>
+                <h1>Built for live checkout, quick decisions, and a cleaner counter experience.</h1>
+                <p class="hero-text">
+                    Run sales, scan items, monitor stock, and manage the day from one screen that feels
+                    purpose-built for retail instead of bolted together.
+                </p>
+                <div class="hero-actions">
+                    <button id="refreshButton" class="primary-action">Refresh Store Data</button>
+                    <button id="adminButton" class="ghost-action">Admin tools</button>
+                    <button id="closeoutButton" class="ghost-action">Today closeout</button>
+                    <button id="logoutButton" class="ghost-action">Logout</button>
+                    <span id="lastUpdated" class="status-pill">Loading...</span>
+                </div>
+            </div>
+            <div class="hero-aside">
+                <div class="spotlight">
+                    <p class="spotlight-label">Today</p>
+                    <strong id="todayTotal">R 0.00</strong>
+                    <span id="transactionCount">0 transactions</span>
+                </div>
+                <div class="spotlight spotlight-secondary">
+                    <p class="spotlight-label">Operator</p>
+                    <strong id="cartTotalHero">R 0.00</strong>
+                    <span id="cartCountHero">Cart empty</span>
+                    <span id="operatorBadge" class="status-pill operator-pill">Signed out</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="dashboard">
+            <section class="cashier-layout panel panel-wide">
+                <div class="panel-header">
+                    <div>
+                        <p class="panel-kicker">Checkout</p>
+                        <h2>Counter</h2>
+                        <p class="section-copy">Search, scan, add fast movers, and move straight through payment without losing context.</p>
+                    </div>
+                    <label class="search-field">
+                        <span>Search products</span>
+                        <input id="productSearch" type="search" placeholder="Name or barcode">
+                    </label>
+                </div>
+
+                <div id="categoryChips" class="chips"></div>
+                <div id="productModeBanner" class="mode-banner">Showing all products</div>
+
+                <section class="fast-movers-shell">
+                    <div class="panel-header compact-header">
+                        <div>
+                            <p class="panel-kicker">Shortcuts</p>
+                            <h2>Fast movers</h2>
+                        </div>
+                        <span class="panel-note">Quick-add your busiest items</span>
+                    </div>
+                    <div class="operator-tools">
+                        <label class="search-field barcode-field">
+                            <span>Barcode entry</span>
+                            <input id="barcodeInput" type="text" inputmode="numeric" placeholder="Scan or type barcode">
+                        </label>
+                        <div class="shortcut-hints">
+                            <span><kbd>F2</kbd> barcode</span>
+                            <span><kbd>F3</kbd> search</span>
+                            <span><kbd>F4</kbd> cash</span>
+                            <span><kbd>F8</kbd> checkout</span>
+                            <span><kbd>Esc</kbd> new sale</span>
+                        </div>
+                    </div>
+                    <div id="fastMovers" class="fast-movers-grid"></div>
+                </section>
+
+                <div class="cashier-grid">
+                    <section class="product-zone">
+                        <div id="productGrid" class="product-grid"></div>
+                    </section>
+
+                    <aside class="checkout-zone">
+                        <div class="cart-panel">
+                            <div class="cart-panel-header">
+                                <div>
+                                    <p class="panel-kicker">Order</p>
+                                    <h3>Current cart</h3>
+                                </div>
+                                <button id="clearCartButton" class="ghost-action">Clear cart</button>
+                            </div>
+                            <div id="cartItems" class="cart-items"></div>
+                        </div>
+
+                        <div class="payment-panel">
+                            <div class="payment-mode">
+                                <label>
+                                    <span>Payment method</span>
+                                    <select id="paymentMethod">
+                                        <option>Cash</option>
+                                        <option>Visa Card</option>
+                                        <option>Master Card</option>
+                                    </select>
+                                </label>
+                            </div>
+
+                            <div class="totals-grid">
+                                <div class="total-line">
+                                    <span>Subtotal</span>
+                                    <strong id="subtotalValue">R 0.00</strong>
+                                </div>
+                                <div class="total-line">
+                                    <span>Tax</span>
+                                    <strong id="taxValue">R 0.00</strong>
+                                </div>
+                                <div class="total-line grand-total">
+                                    <span>Total</span>
+                                    <strong id="totalValue">R 0.00</strong>
+                                </div>
+                                <div class="total-line">
+                                    <span>Cash</span>
+                                    <strong id="cashValue">R 0.00</strong>
+                                </div>
+                                <div class="total-line">
+                                    <span>Change</span>
+                                    <strong id="changeValue">R 0.00</strong>
+                                </div>
+                            </div>
+
+                            <div class="keypad-shell">
+                                <div class="display-field">
+                                    <span>Cash input</span>
+                                    <strong id="cashDisplay">0</strong>
+                                </div>
+                                <div id="keypad" class="keypad-grid"></div>
+                            </div>
+
+                            <div class="checkout-actions">
+                                <button id="newSaleButton" class="ghost-action">New sale</button>
+                                <button id="backspaceButton" class="ghost-action">Backspace</button>
+                                <button id="cashClearButton" class="ghost-action">Clear cash</button>
+                                <button id="checkoutButton" class="primary-action checkout-button">Complete sale</button>
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+            </section>
+
+            <section class="metrics-grid" id="metricsGrid"></section>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <div>
+                        <p class="panel-kicker">Watchlist</p>
+                        <h2>Low stock</h2>
+                        <p class="section-copy">Items that need attention before they start slowing down the floor.</p>
+                    </div>
+                    <span class="panel-note">Threshold: 10 units</span>
+                </div>
+                <div id="lowStockList" class="stack-list"></div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <div>
+                        <p class="panel-kicker">Performance</p>
+                        <h2>Payment mix</h2>
+                        <p class="section-copy">A quick read on how customers are paying today.</p>
+                    </div>
+                </div>
+                <div id="paymentMix" class="stack-list"></div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <div>
+                        <p class="panel-kicker">Best sellers</p>
+                        <h2>Top products today</h2>
+                        <p class="section-copy">Your strongest sellers and the revenue they are bringing in.</p>
+                    </div>
+                </div>
+                <div id="topProductsList" class="stack-list"></div>
+            </section>
+
+            <section class="panel panel-wide">
+                <div class="panel-header">
+                    <div>
+                        <p class="panel-kicker">Receipt</p>
+                        <h2>Last completed sale</h2>
+                        <p class="section-copy">Keep the latest receipt ready for print or customer questions.</p>
+                    </div>
+                    <div class="receipt-actions">
+                        <button id="printReceiptButton" class="ghost-action">Print receipt</button>
+                    </div>
+                </div>
+                <div id="checkoutNotice" class="checkout-notice hidden"></div>
+                <pre id="receiptOutput" class="receipt-output">No sale completed yet.</pre>
+            </section>
+
+            <section class="panel panel-wide">
+                <div class="panel-header">
+                    <div>
+                        <p class="panel-kicker">Operations</p>
+                        <h2>Recent sales</h2>
+                        <p class="section-copy">Recent activity at the till, including reprints and refund actions.</p>
+                    </div>
+                </div>
+                <div id="recentSales" class="sales-table"></div>
+            </section>
+        </main>
+    </div>
+
+    <div id="saleModal" class="modal-shell hidden">
+        <div class="modal-card">
+            <p class="panel-kicker">Sale complete</p>
+            <h2 id="saleModalTitle">Sale completed</h2>
+            <p id="saleModalText" class="modal-copy">The order has been saved.</p>
+            <div class="modal-actions">
+                <button id="modalPrintButton" class="ghost-action">Print receipt</button>
+                <button id="modalCloseButton" class="primary-action">Continue</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="closeoutModal" class="modal-shell hidden">
+        <div class="modal-card modal-card-wide">
+            <p class="panel-kicker">End of day</p>
+            <h2>Today closeout</h2>
+            <div id="closeoutSummary" class="closeout-summary"></div>
+            <div id="closeoutPayments" class="stack-list"></div>
+            <div class="modal-actions">
+                <button id="closeoutCloseButton" class="primary-action">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="adminModal" class="modal-shell hidden">
+        <div class="modal-card modal-card-wide admin-modal-card">
+            <p class="panel-kicker">Admin tools</p>
+            <h2>Products and inventory</h2>
+            <div class="admin-grid">
+                <section class="admin-section">
+                    <h3>Save product</h3>
+                    <div class="admin-form">
+                        <input id="adminProductId" type="hidden">
+                        <label class="search-field"><span>Name</span><input id="adminProductName" type="text"></label>
+                        <label class="search-field"><span>Category</span><input id="adminProductCategory" type="text" placeholder="MAIN"></label>
+                        <label class="search-field"><span>Price</span><input id="adminProductPrice" type="number" step="0.01"></label>
+                        <label class="search-field"><span>Display order</span><input id="adminProductOrder" type="number"></label>
+                        <label class="search-field"><span>Barcode</span><input id="adminProductBarcode" type="text"></label>
+                        <label class="search-field"><span>Stock</span><input id="adminProductStock" type="number"></label>
+                        <label class="search-field"><span>Active</span><select id="adminProductActive"><option value="true">Active</option><option value="false">Inactive</option></select></label>
+                        <button id="adminSaveProductButton" class="primary-action">Save product</button>
+                    </div>
+                </section>
+
+                <section class="admin-section">
+                    <h3>Adjust stock</h3>
+                    <div class="admin-form">
+                        <label class="search-field"><span>Product ID</span><input id="adminAdjustProductId" type="number"></label>
+                        <label class="search-field"><span>Quantity delta</span><input id="adminAdjustDelta" type="number" placeholder="Use negative for shrinkage"></label>
+                        <label class="search-field"><span>Type</span><select id="adminAdjustType"><option>RESTOCK</option><option>ADJUSTMENT</option></select></label>
+                        <label class="search-field"><span>Note</span><input id="adminAdjustNote" type="text" placeholder="Reason"></label>
+                        <button id="adminAdjustInventoryButton" class="primary-action">Update stock</button>
+                    </div>
+                </section>
+            </div>
+
+            <div class="admin-data-grid">
+                <section class="admin-section">
+                    <h3>Products</h3>
+                    <div id="adminProductsTable" class="admin-table"></div>
+                </section>
+                <section class="admin-section">
+                    <h3>Recent stock movements</h3>
+                    <div id="adminMovementsTable" class="admin-table"></div>
+                </section>
+            </div>
+
+            <div class="admin-data-grid">
+                <section class="admin-section">
+                    <h3>Store-live access</h3>
+                    <div id="adminRuntimeInfo" class="admin-table"></div>
+                </section>
+                <section class="admin-section">
+                    <h3>Backup</h3>
+                    <div class="admin-form">
+                        <p class="login-copy">Download a fresh database backup before major updates or end-of-day closeout.</p>
+                        <button id="adminBackupButton" class="primary-action">Download backup</button>
+                    </div>
+                </section>
+            </div>
+
+            <div id="adminMessage" class="checkout-notice hidden"></div>
+            <div class="modal-actions">
+                <button id="adminCloseButton" class="primary-action">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
