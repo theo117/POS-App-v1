@@ -134,6 +134,14 @@ public class SaleRepository
         }
     }
 
+    public SaleRecord findSaleById(int saleId) throws SQLException
+    {
+        try (Connection connection = databaseManager.getConnection())
+        {
+            return findSaleById(connection, saleId);
+        }
+    }
+
     public SalesSummary getSalesSummary(LocalDate startDate, LocalDate endDate) throws SQLException
     {
         try (

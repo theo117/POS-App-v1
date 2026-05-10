@@ -8,6 +8,9 @@ cd /d "%~dp0"
 set "APP_NAME=JavaPOS"
 set "APP_VERSION=1.0.0"
 set "VENDOR=JavaPOS"
+set "APP_DESCRIPTION=Modern desktop point-of-sale for sales, inventory, receipts, and daily closeout."
+set "APP_COPYRIGHT=Copyright 2026 JavaPOS"
+set "MENU_GROUP=JavaPOS"
 set "MAIN_CLASS=ModernPosLauncherMain"
 set "MAIN_JAR=JavaPOS.jar"
 set "DIST_DIR=dist"
@@ -15,6 +18,10 @@ set "BUILD_DIR=build"
 set "CLASSES_DIR=%BUILD_DIR%\classes"
 set "OUT_DIR=installer"
 set "SQLITE_JAR=lib\sqlite-jdbc-3.49.1.0.jar"
+set "RESOURCE_DIR=installer-resources"
+set "ICON_FILE=%RESOURCE_DIR%\JavaPOS.ico"
+set "LICENSE_FILE=%RESOURCE_DIR%\LICENSE.txt"
+set "UPGRADE_UUID=fbe8b10f-7f2d-4c97-8e98-a431ca3c351c"
 
 where jpackage >nul 2>&1
 if errorlevel 1 (
@@ -39,6 +46,26 @@ if errorlevel 1 (
 
 if not exist "%SQLITE_JAR%" (
   echo [ERROR] Missing dependency: %SQLITE_JAR%
+  pause
+  exit /b 1
+)
+
+if exist "%RESOURCE_DIR%\generate-installer-assets.ps1" (
+  where powershell >nul 2>&1
+  if not errorlevel 1 (
+    echo Preparing installer artwork...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%RESOURCE_DIR%\generate-installer-assets.ps1" >nul
+  )
+)
+
+if not exist "%ICON_FILE%" (
+  echo [ERROR] Missing installer icon: %ICON_FILE%
+  pause
+  exit /b 1
+)
+
+if not exist "%LICENSE_FILE%" (
+  echo [ERROR] Missing installer notes file: %LICENSE_FILE%
   pause
   exit /b 1
 )
@@ -109,9 +136,18 @@ jpackage ^
   --dest "%OUT_DIR%" ^
   --app-version "%APP_VERSION%" ^
   --vendor "%VENDOR%" ^
+  --description "%APP_DESCRIPTION%" ^
+  --copyright "%APP_COPYRIGHT%" ^
+  --icon "%ICON_FILE%" ^
+  --license-file "%LICENSE_FILE%" ^
+  --resource-dir "%RESOURCE_DIR%" ^
   --java-options "--enable-native-access=ALL-UNNAMED" ^
   --win-menu ^
+  --win-menu-group "%MENU_GROUP%" ^
   --win-shortcut ^
+  --win-shortcut-prompt ^
+  --win-dir-chooser ^
+  --win-upgrade-uuid "%UPGRADE_UUID%" ^
   --win-per-user-install
 
 if errorlevel 1 (

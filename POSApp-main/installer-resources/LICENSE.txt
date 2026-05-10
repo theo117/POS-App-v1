@@ -1,0 +1,7 @@
+JavaPOS Installer Notes
+
+JavaPOS is a desktop point-of-sale application for local business use.
+
+This installer adds JavaPOS to the current Windows user account, creates optional shortcuts, and stores application data in the user's local application data folder.
+
+Before installing, make sure you trust this application package and have a current backup of any existing JavaPOS database.

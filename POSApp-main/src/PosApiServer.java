@@ -455,17 +455,7 @@ public class PosApiServer
 
     private Map<String, Object> buildReceiptResponse(int saleId) throws SQLException
     {
-        List<SaleRecord> sales = saleRepository.findRecentSales(200);
-        SaleRecord matchedSale = null;
-        for (SaleRecord sale : sales)
-        {
-            if (sale.getId() == saleId)
-            {
-                matchedSale = sale;
-                break;
-            }
-        }
-
+        SaleRecord matchedSale = saleRepository.findSaleById(saleId);
         if (matchedSale == null)
         {
             throw new IllegalArgumentException("Sale not found.");
@@ -528,7 +518,7 @@ public class PosApiServer
                 throw new IllegalArgumentException("Cash amount is required for cash payments.");
             }
 
-            cashAmount = MoneyUtils.scale(new BigDecimal(cashValue));
+            cashAmount = parseNonNegativeMoney(cashValue, "Cash amount");
             if (cashAmount.compareTo(totals.getTotal()) < 0)
             {
                 throw new IllegalArgumentException("Cash amount is less than the order total.");
@@ -577,15 +567,15 @@ public class PosApiServer
         String displayOrderText = parameters.getOrDefault("displayOrder", "").trim();
         String barcode = parameters.getOrDefault("barcode", "").trim();
         boolean active = !"false".equalsIgnoreCase(parameters.getOrDefault("active", "true"));
-        int stockQuantity = parsePositiveInt(parameters.getOrDefault("stockQuantity", "0"), 0);
+        int stockQuantity = parseNonNegativeInt(parameters.getOrDefault("stockQuantity", "0"), "Stock quantity");
 
         if (name.isEmpty() || category.isEmpty() || priceText.isEmpty())
         {
             throw new IllegalArgumentException("Name, category, and price are required.");
         }
 
-        BigDecimal price = MoneyUtils.scale(new BigDecimal(priceText));
-        int displayOrder = parsePositiveInt(displayOrderText, 0);
+        BigDecimal price = parsePositiveMoney(priceText, "Price");
+        int displayOrder = parseNonNegativeInt(displayOrderText.isEmpty() ? "0" : displayOrderText, "Display order");
         Product product = new Product(
             productId > 0 ? productId : null,
             name,
@@ -650,14 +640,14 @@ public class PosApiServer
             String[] parts = entry.split(":");
             if (parts.length != 2)
             {
-                continue;
+                throw new IllegalArgumentException("Cart items must be productId:quantity pairs.");
             }
 
             int productId = Integer.parseInt(parts[0].trim());
             int quantity = Integer.parseInt(parts[1].trim());
-            if (quantity <= 0)
+            if (productId <= 0 || quantity <= 0)
             {
-                continue;
+                throw new IllegalArgumentException("Cart item product IDs and quantities must be positive.");
             }
 
             Product product = productRepository.findById(productId);
@@ -835,6 +825,60 @@ public class PosApiServer
         catch (NumberFormatException ex)
         {
             return defaultValue;
+        }
+    }
+
+    private int parseNonNegativeInt(String value, String fieldName)
+    {
+        if (value == null || value.trim().isEmpty())
+        {
+            return 0;
+        }
+
+        try
+        {
+            int parsed = Integer.parseInt(value.trim());
+            if (parsed < 0)
+            {
+                throw new IllegalArgumentException(fieldName + " cannot be negative.");
+            }
+            return parsed;
+        }
+        catch (NumberFormatException ex)
+        {
+            throw new IllegalArgumentException(fieldName + " must be a valid whole number.");
+        }
+    }
+
+    private BigDecimal parsePositiveMoney(String value, String fieldName)
+    {
+        BigDecimal amount = parseNonNegativeMoney(value, fieldName);
+        if (amount.compareTo(BigDecimal.ZERO) <= 0)
+        {
+            throw new IllegalArgumentException(fieldName + " must be greater than zero.");
+        }
+        return amount;
+    }
+
+    private BigDecimal parseNonNegativeMoney(String value, String fieldName)
+    {
+        if (value == null || value.trim().isEmpty())
+        {
+            throw new IllegalArgumentException(fieldName + " is required.");
+        }
+
+        try
+        {
+            BigDecimal amount = MoneyUtils.scale(new BigDecimal(value.trim()));
+            if (amount.compareTo(BigDecimal.ZERO) < 0)
+            {
+                throw new IllegalArgumentException(fieldName + " cannot be negative.");
+            }
+            return amount;
+        }
+        catch (NumberFormatException ex)
+        {
+            throw new IllegalArgumentException(fieldName + " must be a valid amount.");
         }
     }
 

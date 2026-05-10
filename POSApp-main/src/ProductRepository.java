@@ -191,12 +191,43 @@ public class ProductRepository
 
     public void delete(int id) throws SQLException
     {
-        try (
-            Connection connection = databaseManager.getConnection();
-            PreparedStatement statement = connection.prepareStatement("DELETE FROM products WHERE id = ?")
-        )
+        try (Connection connection = databaseManager.getConnection())
         {
-            statement.setInt(1, id);
+            if (hasStockMovementHistory(connection, id))
+            {
+                deactivate(connection, id);
+                return;
+            }
+
+            try (PreparedStatement statement = connection.prepareStatement("DELETE FROM products WHERE id = ?"))
+            {
+                statement.setInt(1, id);
+                statement.executeUpdate();
+            }
+        }
+    }
+
+    private boolean hasStockMovementHistory(Connection connection, int productId) throws SQLException
+    {
+        try (PreparedStatement statement = connection.prepareStatement(
+            "SELECT COUNT(*) FROM stock_movements WHERE product_id = ?"
+        ))
+        {
+            statement.setInt(1, productId);
+            try (ResultSet resultSet = statement.executeQuery())
+            {
+                return resultSet.next() && resultSet.getInt(1) > 0;
+            }
+        }
+    }
+
+    private void deactivate(Connection connection, int productId) throws SQLException
+    {
+        try (PreparedStatement statement = connection.prepareStatement(
+            "UPDATE products SET active = 0 WHERE id = ?"
+        ))
+        {
+            statement.setInt(1, productId);
             statement.executeUpdate();
         }
     }

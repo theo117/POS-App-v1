@@ -20,6 +20,11 @@ public final class PasswordUtils
 
     public static String hashPassword(String password)
     {
+        if (password == null)
+        {
+            throw new IllegalArgumentException("Password is required.");
+        }
+
         byte[] salt = new byte[SALT_LENGTH];
         new SecureRandom().nextBytes(salt);
         byte[] hash = pbkdf2(password.toCharArray(), salt, ITERATIONS, KEY_LENGTH);
@@ -33,24 +38,31 @@ public final class PasswordUtils
 
     public static boolean verifyPassword(String password, String storedPassword)
     {
-        if (storedPassword == null)
+        if (password == null || storedPassword == null)
         {
             return false;
         }
 
         if (storedPassword.startsWith(PBKDF2_PREFIX))
         {
-            String[] parts = storedPassword.split("\\$");
-            if (parts.length != 4)
+            try
+            {
+                String[] parts = storedPassword.split("\\$");
+                if (parts.length != 4)
+                {
+                    return false;
+                }
+
+                int iterations = Integer.parseInt(parts[1]);
+                byte[] salt = Base64.getDecoder().decode(parts[2]);
+                byte[] expectedHash = Base64.getDecoder().decode(parts[3]);
+                byte[] actualHash = pbkdf2(password.toCharArray(), salt, iterations, expectedHash.length * 8);
+                return MessageDigest.isEqual(expectedHash, actualHash);
+            }
+            catch (IllegalArgumentException ex)
             {
                 return false;
             }
-
-            int iterations = Integer.parseInt(parts[1]);
-            byte[] salt = Base64.getDecoder().decode(parts[2]);
-            byte[] expectedHash = Base64.getDecoder().decode(parts[3]);
-            byte[] actualHash = pbkdf2(password.toCharArray(), salt, iterations, expectedHash.length * 8);
-            return MessageDigest.isEqual(expectedHash, actualHash);
         }
 
         return password.equals(storedPassword) || legacySha256(password).equals(storedPassword);

@@ -157,7 +157,7 @@ public class ProductManagementDialog extends JDialog
         }
 
         int productId = Integer.parseInt(productTable.getValueAt(row, 0).toString());
-        if (JOptionPane.showConfirmDialog(this, "Delete the selected product?", "Manage Products", JOptionPane.YES_NO_OPTION)
+        if (JOptionPane.showConfirmDialog(this, "Delete the selected product? Products with stock history will be deactivated instead.", "Manage Products", JOptionPane.YES_NO_OPTION)
             != JOptionPane.YES_OPTION)
         {
             return;
@@ -234,6 +234,18 @@ public class ProductManagementDialog extends JDialog
                 return null;
             }
 
+            if (price.compareTo(BigDecimal.ZERO) <= 0)
+            {
+                JOptionPane.showMessageDialog(this, "Price must be greater than zero.");
+                return null;
+            }
+
+            if (displayOrder < 0)
+            {
+                JOptionPane.showMessageDialog(this, "Display order cannot be negative.");
+                return null;
+            }
+
             if (stockQuantity < 0)
             {
                 JOptionPane.showMessageDialog(this, "Stock quantity cannot be negative.");
@@ -253,7 +265,7 @@ public class ProductManagementDialog extends JDialog
         }
         catch (NumberFormatException ex)
         {
-            JOptionPane.showMessageDialog(this, "Enter a valid price and display order.");
+            JOptionPane.showMessageDialog(this, "Enter a valid price, display order, and stock quantity.");
             return null;
         }
     }

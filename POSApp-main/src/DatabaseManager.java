@@ -23,13 +23,17 @@ public class DatabaseManager
 
     public Connection getConnection() throws SQLException
     {
-        return DriverManager.getConnection(jdbcUrl);
+        Connection connection = DriverManager.getConnection(jdbcUrl);
+        configureConnection(connection);
+        return connection;
     }
 
     public void initialize() throws SQLException
     {
         try (Connection connection = getConnection(); Statement statement = connection.createStatement())
         {
+            statement.execute("PRAGMA journal_mode = WAL");
+            statement.execute("PRAGMA synchronous = NORMAL");
             statement.executeUpdate(
                 "CREATE TABLE IF NOT EXISTS products ("
                     + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -96,7 +100,26 @@ public class DatabaseManager
                     + "FOREIGN KEY (product_id) REFERENCES products(id)"
                     + ")"
             );
+            ensureIndexes(statement);
         }
+    }
+
+    private void configureConnection(Connection connection) throws SQLException
+    {
+        try (Statement statement = connection.createStatement())
+        {
+            statement.execute("PRAGMA foreign_keys = ON");
+            statement.execute("PRAGMA busy_timeout = 5000");
+        }
+    }
+
+    private void ensureIndexes(Statement statement) throws SQLException
+    {
+        statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_products_active_order ON products(active, display_order, name)");
+        statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_products_barcode ON products(barcode)");
+        statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_sales_created_at ON sales(created_at)");
+        statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id ON sale_items(sale_id)");
+        statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_stock_movements_created_at ON stock_movements(created_at)");
     }
 
     private void ensureColumnExists(Statement statement, String tableName, String columnName, String columnDefinition) throws SQLException
