@@ -1,0 +1,22 @@
+# Java build output
+/build/
+/dist/
+/nbproject/private/
+
+# Packaged installers and generated runtime images
+/installer/
+/tools/wix314/
+
+# Runtime logs
+*.log
+
+# Local databases and SQLite sidecar files
+*.db
+*.db-shm
+*.db-wal
+
+# IDE and OS files
+/.classpath
+/.project
+.DS_Store
+Thumbs.db

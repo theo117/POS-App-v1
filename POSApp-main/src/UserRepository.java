@@ -7,6 +7,7 @@ import java.util.List;
 
 public class UserRepository
 {
+    private static final int MIN_PASSWORD_LENGTH = 6;
     private final DatabaseManager databaseManager;
 
     public UserRepository(DatabaseManager databaseManager)
@@ -26,8 +27,8 @@ public class UserRepository
             }
         }
 
-        createUser("admin", "admin", "ADMIN", true);
-        createUser("cashier", "cashier", "CASHIER", true);
+        createUser("admin", "admin123", "ADMIN", true);
+        createUser("cashier", "cashier123", "CASHIER", true);
     }
 
     public UserAccount authenticate(String username, String password) throws SQLException
@@ -97,14 +98,15 @@ public class UserRepository
 
     public void createUser(String username, String password, String role, boolean mustChangePassword) throws SQLException
     {
+        validateUserInput(username, password, role, true);
         try (Connection connection = databaseManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(
                  "INSERT INTO users(username, password, role, active, must_change_password) VALUES (?, ?, ?, 1, ?)"
              ))
         {
-            statement.setString(1, username);
+            statement.setString(1, username.trim());
             statement.setString(2, PasswordUtils.hashPassword(password));
-            statement.setString(3, role);
+            statement.setString(3, role.trim().toUpperCase());
             statement.setInt(4, mustChangePassword ? 1 : 0);
             statement.executeUpdate();
         }
@@ -112,25 +114,25 @@ public class UserRepository
 
     public void updateUser(int id, String username, String password, String role, boolean active) throws SQLException
     {
+        validateUserInput(username, password, role, false);
         String sql = password == null || password.trim().isEmpty()
-            ? "UPDATE users SET username = ?, role = ?, active = ?, must_change_password = ? WHERE id = ?"
+            ? "UPDATE users SET username = ?, role = ?, active = ? WHERE id = ?"
             : "UPDATE users SET username = ?, password = ?, role = ?, active = ?, must_change_password = ? WHERE id = ?";
 
         try (Connection connection = databaseManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql))
         {
-            statement.setString(1, username);
+            statement.setString(1, username.trim());
             if (password == null || password.trim().isEmpty())
             {
-                statement.setString(2, role);
+                statement.setString(2, role.trim().toUpperCase());
                 statement.setInt(3, active ? 1 : 0);
-                statement.setInt(4, 0);
-                statement.setInt(5, id);
+                statement.setInt(4, id);
             }
             else
             {
                 statement.setString(2, PasswordUtils.hashPassword(password));
-                statement.setString(3, role);
+                statement.setString(3, role.trim().toUpperCase());
                 statement.setInt(4, active ? 1 : 0);
                 statement.setInt(5, 0);
                 statement.setInt(6, id);
@@ -141,6 +143,7 @@ public class UserRepository
 
     public void forcePasswordChange(int userId, String newPassword) throws SQLException
     {
+        validatePassword(newPassword);
         try (Connection connection = databaseManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(
                  "UPDATE users SET password = ?, must_change_password = 0 WHERE id = ?"
@@ -149,6 +152,32 @@ public class UserRepository
             statement.setString(1, PasswordUtils.hashPassword(newPassword));
             statement.setInt(2, userId);
             statement.executeUpdate();
+        }
+    }
+
+    private void validateUserInput(String username, String password, String role, boolean passwordRequired) throws SQLException
+    {
+        if (username == null || username.trim().isEmpty())
+        {
+            throw new SQLException("Username is required.");
+        }
+
+        if (!"ADMIN".equalsIgnoreCase(role) && !"CASHIER".equalsIgnoreCase(role))
+        {
+            throw new SQLException("Role must be ADMIN or CASHIER.");
+        }
+
+        if (passwordRequired || (password != null && !password.trim().isEmpty()))
+        {
+            validatePassword(password);
+        }
+    }
+
+    private void validatePassword(String password) throws SQLException
+    {
+        if (password == null || password.length() < MIN_PASSWORD_LENGTH)
+        {
+            throw new SQLException("Password must be at least " + MIN_PASSWORD_LENGTH + " characters.");
         }
     }
 

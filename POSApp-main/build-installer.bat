@@ -22,6 +22,11 @@ set "RESOURCE_DIR=installer-resources"
 set "ICON_FILE=%RESOURCE_DIR%\JavaPOS.ico"
 set "LICENSE_FILE=%RESOURCE_DIR%\LICENSE.txt"
 set "UPGRADE_UUID=fbe8b10f-7f2d-4c97-8e98-a431ca3c351c"
+set "LOCAL_WIX_DIR=tools\wix314"
+
+if exist "%LOCAL_WIX_DIR%\candle.exe" if exist "%LOCAL_WIX_DIR%\light.exe" (
+  set "PATH=%CD%\%LOCAL_WIX_DIR%;%PATH%"
+)
 
 where jpackage >nul 2>&1
 if errorlevel 1 (
@@ -77,7 +82,7 @@ mkdir "%CLASSES_DIR%"
 mkdir "%DIST_DIR%"
 
 echo [2/4] Compiling sources...
-javac -d "%CLASSES_DIR%" src\*.java
+javac -cp "%SQLITE_JAR%" -d "%CLASSES_DIR%" src\*.java
 if errorlevel 1 (
   echo [ERROR] javac compilation failed.
   pause

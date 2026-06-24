@@ -28,7 +28,9 @@ import javax.swing.SwingUtilities;
 import javax.swing.SwingConstants;
 import javax.swing.UIManager;
 import javax.swing.border.TitledBorder;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableColumnModel;
 
 /*
  * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
@@ -271,16 +273,14 @@ public class JavaPOS extends javax.swing.JFrame {
         UIManager.put("ToolTip.background", new Color(29, 40, 56));
         UIManager.put("ToolTip.foreground", Color.WHITE);
 
-        Color appBackground = new Color(241, 244, 248);
-        Color panelBackground = new Color(255, 252, 247);
-        Color chromeBackground = new Color(27, 38, 58);
-        Color menuButtonBackground = new Color(245, 247, 250);
-        Color keypadBackground = new Color(236, 240, 245);
+        Color appBackground = new Color(244, 247, 250);
+        Color panelBackground = Color.WHITE;
+        Color chromeBackground = new Color(32, 45, 60);
+        Color menuButtonBackground = new Color(250, 252, 254);
+        Color keypadBackground = new Color(240, 244, 249);
         Color primaryAction = new Color(18, 117, 90);
-        Color neutralAction = new Color(55, 68, 92);
-        Color dangerAction = new Color(166, 51, 65);
         Color lineColor = new Color(205, 214, 226);
-        Color accentColor = new Color(223, 145, 62);
+        Color accentColor = new Color(18, 117, 90);
 
         setTitle("POS App - Checkout" + (currentUser == null ? "" : " | " + currentUser.getUsername() + " (" + currentUser.getRole() + ")"));
         setResizable(true);
@@ -293,12 +293,12 @@ public class JavaPOS extends javax.swing.JFrame {
             BorderFactory.createEmptyBorder(16, 20, 16, 20)
         ));
         headerTitleLabel.setForeground(Color.WHITE);
-        headerTitleLabel.setFont(new Font("Segoe UI Semibold", Font.BOLD, 30));
-        headerSubtitleLabel.setForeground(new Color(198, 209, 224));
+        headerTitleLabel.setFont(new Font("Segoe UI Semibold", Font.BOLD, 28));
+        headerSubtitleLabel.setForeground(new Color(203, 213, 225));
         headerSubtitleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 14));
         sessionBadgeLabel.setOpaque(true);
-        sessionBadgeLabel.setBackground(new Color(42, 59, 86));
-        sessionBadgeLabel.setForeground(new Color(231, 238, 246));
+        sessionBadgeLabel.setBackground(new Color(48, 66, 84));
+        sessionBadgeLabel.setForeground(Color.WHITE);
         sessionBadgeLabel.setHorizontalAlignment(SwingConstants.CENTER);
         sessionBadgeLabel.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(new Color(94, 120, 158)),
@@ -316,7 +316,7 @@ public class JavaPOS extends javax.swing.JFrame {
 
         jPanel1.setBackground(panelBackground);
         jPanel2.setBackground(panelBackground);
-        jPanel3.setBackground(new Color(232, 237, 244));
+        jPanel3.setBackground(appBackground);
         jPanel4.setBackground(panelBackground);
         jPanel5.setBackground(panelBackground);
         jPanel6.setBackground(panelBackground);
@@ -343,8 +343,8 @@ public class JavaPOS extends javax.swing.JFrame {
         styleSummaryLabel(jLabel5);
         styleSummaryLabel(jLabel6);
 
-        jTable1.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        jTable1.setRowHeight(38);
+        jTable1.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        jTable1.setRowHeight(42);
         jTable1.setShowHorizontalLines(true);
         jTable1.setShowVerticalLines(false);
         jTable1.setGridColor(new Color(229, 234, 241));
@@ -354,8 +354,10 @@ public class JavaPOS extends javax.swing.JFrame {
         jTable1.getTableHeader().setFont(new Font("Segoe UI Semibold", Font.BOLD, 13));
         jTable1.getTableHeader().setBackground(new Color(242, 245, 249));
         jTable1.getTableHeader().setForeground(new Color(35, 44, 56));
-        jScrollPane1.getViewport().setBackground(panelBackground);
-        jScrollPane1.setBorder(createSectionBorder("Current Order", accentColor));
+        jTable1.setIntercellSpacing(new Dimension(0, 1));
+        configureCartTable();
+        jScrollPane1.getViewport().setBackground(Color.WHITE);
+        jScrollPane1.setBorder(createSectionBorder("Current Order", new Color(70, 92, 118)));
 
         styleButtons(
             new JButton[]{jBtnStillWater, jBtnLargePizza, jButton11, jButton13, jButton14, jButton16, jButton17, jButton18,
@@ -384,7 +386,7 @@ public class JavaPOS extends javax.swing.JFrame {
         rebuildCashPad();
 
         Color actionText = new Color(20, 33, 61);
-        styleButtons(new JButton[]{jBtnPay}, new Color(208, 240, 230), new Color(17, 79, 61));
+        styleButtons(new JButton[]{jBtnPay}, primaryAction, Color.WHITE);
         styleButtons(new JButton[]{jBtnPrint, jBtnReset, jBtnRemove}, new Color(225, 233, 244), actionText);
         styleButtons(new JButton[]{jBtnExit}, new Color(255, 220, 220), new Color(127, 20, 20));
         setUniformButtonSize(new JButton[]{jBtnPay, jBtnPrint, jBtnReset, jBtnRemove, jBtnExit}, 152, 48);
@@ -394,7 +396,7 @@ public class JavaPOS extends javax.swing.JFrame {
         jBtnRemove.setText("Remove Item");
         jBtnPrint.setText("Print Slip");
         jBtnExit.setText("Exit");
-        jBtnPay.setFont(new Font("Segoe UI Semibold", Font.BOLD, 16));
+        jBtnPay.setFont(new Font("Segoe UI Semibold", Font.BOLD, 17));
 
         jCboPayment.setBackground(Color.WHITE);
         jCboPayment.setForeground(new Color(33, 40, 54));
@@ -549,11 +551,26 @@ public class JavaPOS extends javax.swing.JFrame {
         }
     }
 
+    private void configureCartTable()
+    {
+        DefaultTableCellRenderer rightRenderer = new DefaultTableCellRenderer();
+        rightRenderer.setHorizontalAlignment(SwingConstants.RIGHT);
+        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
+        centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
+
+        TableColumnModel columns = jTable1.getColumnModel();
+        columns.getColumn(0).setPreferredWidth(260);
+        columns.getColumn(1).setPreferredWidth(70);
+        columns.getColumn(1).setCellRenderer(centerRenderer);
+        columns.getColumn(2).setPreferredWidth(120);
+        columns.getColumn(2).setCellRenderer(rightRenderer);
+    }
+
     private void rebuildProductGrid()
     {
         jPanel1.removeAll();
-        jPanel1.setLayout(new GridLayout(6, 3, 12, 12));
-        jPanel1.setBorder(createSectionBorder("Product Grid", new Color(223, 145, 62)));
+        jPanel1.setLayout(new GridLayout(6, 3, 10, 10));
+        jPanel1.setBorder(createSectionBorder("Products", new Color(18, 117, 90)));
 
         for (JButton button : menuButtons)
         {
@@ -568,7 +585,7 @@ public class JavaPOS extends javax.swing.JFrame {
     {
         jPanel2.removeAll();
         jPanel2.setLayout(new GridLayout(4, 3, 10, 10));
-        jPanel2.setBorder(createSectionBorder("Cash Pad", new Color(223, 145, 62)));
+        jPanel2.setBorder(createSectionBorder("Cash Pad", new Color(70, 92, 118)));
 
         for (JButton button : keypadButtons)
         {
@@ -590,7 +607,7 @@ public class JavaPOS extends javax.swing.JFrame {
     {
         jPanel6.removeAll();
         jPanel6.setLayout(new GridLayout(3, 2, 10, 10));
-        jPanel6.setBorder(createSectionBorder("Order Summary", new Color(223, 145, 62)));
+        jPanel6.setBorder(createSectionBorder("Totals", new Color(18, 117, 90)));
 
         jPanel6.add(jLabel1);
         jPanel6.add(jTxtSubTotal);
@@ -624,7 +641,7 @@ public class JavaPOS extends javax.swing.JFrame {
 
         jPanel5.removeAll();
         jPanel5.setLayout(new GridLayout(1, 2, 16, 16));
-        jPanel5.setBorder(createSectionBorder("Payment", new Color(223, 145, 62)));
+        jPanel5.setBorder(createSectionBorder("Payment", new Color(70, 92, 118)));
         jPanel5.add(paymentFields);
         jPanel5.add(actionButtons);
         jPanel5.revalidate();
@@ -686,21 +703,21 @@ public class JavaPOS extends javax.swing.JFrame {
         switch (category)
         {
             case "DRINK":
-                background = new Color(228, 243, 255);
-                borderColor = new Color(153, 196, 235);
+                background = new Color(232, 246, 255);
+                borderColor = new Color(96, 165, 220);
                 break;
             case "DESSERT":
-                background = new Color(255, 241, 228);
-                borderColor = new Color(229, 186, 135);
+                background = new Color(255, 244, 232);
+                borderColor = new Color(226, 160, 82);
                 break;
             case "SEAFOOD":
-                background = new Color(236, 246, 255);
-                borderColor = new Color(168, 200, 231);
+                background = new Color(230, 248, 247);
+                borderColor = new Color(86, 174, 169);
                 break;
             case "MAIN":
             default:
-                background = new Color(234, 250, 236);
-                borderColor = new Color(161, 211, 164);
+                background = new Color(235, 248, 239);
+                borderColor = new Color(89, 168, 114);
                 break;
         }
 
@@ -710,11 +727,18 @@ public class JavaPOS extends javax.swing.JFrame {
     private void setMenuButtonLabel(JButton button, String itemName, String price, String category, int stockQuantity)
     {
         String stockLabel = stockQuantity > 0 ? "Stock: " + stockQuantity : "OUT";
+        String stockColor = stockQuantity <= 0 ? "#9f1239" : stockQuantity <= 5 ? "#b45309" : "#64748b";
         String label = String.format(
-            "<html><div style='text-align:center; line-height:1.35;'><div style='font-size:10px; letter-spacing:0.08em; color:#6b7688;'>%s</div><div style='font-size:13px; font-weight:700; color:#1f2b3a; margin:4px 0;'>%s</div><div style='font-size:12px; font-weight:600; color:#12654f;'>%s</div><div style='font-size:10px; color:#6b7688; margin-top:4px;'>%s</div></div></html>",
+            "<html><div style='text-align:left; line-height:1.25; width:150px;'>"
+                + "<div style='font-size:9px; color:#64748b;'>%s</div>"
+                + "<div style='font-size:13px; font-weight:700; color:#172033; margin-top:4px;'>%s</div>"
+                + "<div style='font-size:14px; font-weight:700; color:#0f766e; margin-top:6px;'>%s</div>"
+                + "<div style='font-size:10px; color:%s; margin-top:4px;'>%s</div>"
+                + "</div></html>",
             category,
             itemName,
             price,
+            stockColor,
             stockLabel
         );
         button.setText(label);
@@ -726,25 +750,32 @@ public class JavaPOS extends javax.swing.JFrame {
         button.setBackground(background);
         button.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(borderColor),
-            BorderFactory.createEmptyBorder(6, 8, 6, 8)
+            BorderFactory.createEmptyBorder(8, 10, 8, 10)
         ));
     }
 
     private void styleTextField(JTextField textField, boolean readOnly)
     {
         textField.setHorizontalAlignment(SwingConstants.RIGHT);
-        textField.setFont(new Font("Segoe UI Semibold", Font.BOLD, 17));
+        textField.setFont(new Font("Segoe UI Semibold", Font.BOLD, 18));
         textField.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(new Color(196, 206, 221)),
             BorderFactory.createEmptyBorder(8, 10, 8, 10)
         ));
-        if (readOnly)
+        if (textField == jTxtTotal)
+        {
+            textField.setBackground(new Color(229, 246, 239));
+            textField.setForeground(new Color(12, 74, 56));
+        }
+        else if (readOnly)
         {
             textField.setBackground(new Color(247, 250, 255));
+            textField.setForeground(new Color(32, 45, 60));
         }
         else
         {
             textField.setBackground(Color.WHITE);
+            textField.setForeground(new Color(32, 45, 60));
         }
     }
 
@@ -757,14 +788,14 @@ public class JavaPOS extends javax.swing.JFrame {
     private javax.swing.border.Border createSectionBorder(String title, Color accentColor)
     {
         TitledBorder titledBorder = BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(new Color(205, 214, 226)),
+            BorderFactory.createLineBorder(new Color(216, 224, 234)),
             title
         );
-        titledBorder.setTitleFont(new Font("Segoe UI Semibold", Font.BOLD, 14));
-        titledBorder.setTitleColor(accentColor.darker());
+        titledBorder.setTitleFont(new Font("Segoe UI Semibold", Font.BOLD, 13));
+        titledBorder.setTitleColor(accentColor);
         return BorderFactory.createCompoundBorder(
             titledBorder,
-            BorderFactory.createEmptyBorder(12, 12, 12, 12)
+            BorderFactory.createEmptyBorder(10, 10, 10, 10)
         );
     }
 
@@ -1554,7 +1585,7 @@ public class JavaPOS extends javax.swing.JFrame {
             model.addRow(new Object[]{
                 item.getProduct().getName(),
                 item.getQuantity(),
-                item.getLineTotal().doubleValue()
+                MoneyUtils.format(item.getLineTotal())
             });
         }
     }

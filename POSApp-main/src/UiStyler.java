@@ -22,11 +22,11 @@ import javax.swing.text.JTextComponent;
 
 public final class UiStyler
 {
-    private static final Color DIALOG_BACKGROUND = new Color(251, 249, 245);
-    private static final Color PANEL_BACKGROUND = new Color(255, 252, 247);
-    private static final Color BORDER_COLOR = new Color(205, 214, 226);
-    private static final Color TEXT_PRIMARY = new Color(27, 38, 58);
-    private static final Color TEXT_MUTED = new Color(92, 103, 118);
+    private static final Color DIALOG_BACKGROUND = new Color(244, 247, 250);
+    private static final Color PANEL_BACKGROUND = Color.WHITE;
+    private static final Color BORDER_COLOR = new Color(216, 224, 234);
+    private static final Color TEXT_PRIMARY = new Color(32, 45, 60);
+    private static final Color TEXT_MUTED = new Color(100, 116, 139);
     private static final Color ACCENT = new Color(18, 117, 90);
     private static final Color SECONDARY = new Color(234, 239, 245);
     private static final Color DANGER = new Color(244, 224, 226);
@@ -49,7 +49,7 @@ public final class UiStyler
     public static JPanel createHeader(String title, String subtitle)
     {
         JLabel titleLabel = new JLabel(title);
-        titleLabel.setFont(new Font("Segoe UI Semibold", Font.BOLD, 22));
+        titleLabel.setFont(new Font("Segoe UI Semibold", Font.BOLD, 21));
         titleLabel.setForeground(TEXT_PRIMARY);
 
         JLabel subtitleLabel = new JLabel(subtitle);
@@ -79,11 +79,11 @@ public final class UiStyler
             BorderFactory.createLineBorder(BORDER_COLOR),
             title
         );
-        titledBorder.setTitleFont(new Font("Segoe UI Semibold", Font.BOLD, 14));
-        titledBorder.setTitleColor(TEXT_PRIMARY);
+        titledBorder.setTitleFont(new Font("Segoe UI Semibold", Font.BOLD, 13));
+        titledBorder.setTitleColor(ACCENT);
         return BorderFactory.createCompoundBorder(
             titledBorder,
-            BorderFactory.createEmptyBorder(12, 12, 12, 12)
+            BorderFactory.createEmptyBorder(10, 10, 10, 10)
         );
     }
 
@@ -130,13 +130,13 @@ public final class UiStyler
     public static void styleTable(JTable table)
     {
         table.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        table.setRowHeight(34);
+        table.setRowHeight(38);
         table.setShowVerticalLines(false);
         table.setGridColor(new Color(229, 234, 241));
-        table.setSelectionBackground(new Color(219, 236, 255));
+        table.setSelectionBackground(new Color(220, 238, 247));
         table.setSelectionForeground(TEXT_PRIMARY);
         table.getTableHeader().setFont(new Font("Segoe UI Semibold", Font.BOLD, 13));
-        table.getTableHeader().setBackground(new Color(242, 245, 249));
+        table.getTableHeader().setBackground(new Color(241, 245, 249));
         table.getTableHeader().setForeground(new Color(48, 60, 79));
         table.getTableHeader().setReorderingAllowed(false);
     }
@@ -184,7 +184,7 @@ public final class UiStyler
         button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         button.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(BORDER_COLOR),
-            BorderFactory.createEmptyBorder(8, 12, 8, 12)
+            BorderFactory.createEmptyBorder(9, 14, 9, 14)
         ));
     }
 

@@ -1,15 +1,12 @@
 import java.awt.BorderLayout;
 import java.awt.Frame;
-import java.awt.GridLayout;
 import java.sql.SQLException;
-import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
-import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
+import javax.swing.JPasswordField;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.table.DefaultTableModel;
@@ -85,15 +82,18 @@ public class UserManagementDialog extends JDialog
     private void addUser()
     {
         JTextField usernameField = new JTextField();
-        JTextField passwordField = new JTextField();
+        JPasswordField passwordField = new JPasswordField();
+        JPasswordField confirmPasswordField = new JPasswordField();
         JComboBox<String> roleField = new JComboBox<>(new String[]{"ADMIN", "CASHIER"});
         UiStyler.styleTextComponent(usernameField, false);
         UiStyler.styleTextComponent(passwordField, false);
+        UiStyler.styleTextComponent(confirmPasswordField, false);
         UiStyler.styleComboBox(roleField);
 
         JPanel form = UiStyler.createLabeledFormPanel(
             "Username", usernameField,
             "Password", passwordField,
+            "Confirm Password", confirmPasswordField,
             "Role", roleField
         );
 
@@ -104,7 +104,14 @@ public class UserManagementDialog extends JDialog
 
         try
         {
-            userRepository.createUser(usernameField.getText().trim(), passwordField.getText().trim(), roleField.getSelectedItem().toString());
+            String password = getPassword(passwordField);
+            if (!password.equals(getPassword(confirmPasswordField)))
+            {
+                JOptionPane.showMessageDialog(this, "Passwords must match.", "User Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            userRepository.createUser(usernameField.getText().trim(), password, roleField.getSelectedItem().toString());
             loadUsers();
         }
         catch (SQLException ex)
@@ -124,19 +131,22 @@ public class UserManagementDialog extends JDialog
 
         int id = Integer.parseInt(usersTable.getValueAt(row, 0).toString());
         JTextField usernameField = new JTextField(usersTable.getValueAt(row, 1).toString());
-        JTextField passwordField = new JTextField();
+        JPasswordField passwordField = new JPasswordField();
+        JPasswordField confirmPasswordField = new JPasswordField();
         JComboBox<String> roleField = new JComboBox<>(new String[]{"ADMIN", "CASHIER"});
         roleField.setSelectedItem(usersTable.getValueAt(row, 2).toString());
         JComboBox<String> activeField = new JComboBox<>(new String[]{"Yes", "No"});
         activeField.setSelectedItem(usersTable.getValueAt(row, 3).toString());
         UiStyler.styleTextComponent(usernameField, false);
         UiStyler.styleTextComponent(passwordField, false);
+        UiStyler.styleTextComponent(confirmPasswordField, false);
         UiStyler.styleComboBox(roleField);
         UiStyler.styleComboBox(activeField);
 
         JPanel form = UiStyler.createLabeledFormPanel(
             "Username", usernameField,
             "New Password", passwordField,
+            "Confirm Password", confirmPasswordField,
             "Role", roleField,
             "Active", activeField
         );
@@ -148,10 +158,17 @@ public class UserManagementDialog extends JDialog
 
         try
         {
+            String password = getPassword(passwordField);
+            if (!password.equals(getPassword(confirmPasswordField)))
+            {
+                JOptionPane.showMessageDialog(this, "Passwords must match.", "User Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
             userRepository.updateUser(
                 id,
                 usernameField.getText().trim(),
-                passwordField.getText().trim(),
+                password,
                 roleField.getSelectedItem().toString(),
                 "Yes".equals(activeField.getSelectedItem())
             );
@@ -161,5 +178,10 @@ public class UserManagementDialog extends JDialog
         {
             JOptionPane.showMessageDialog(this, "Unable to update user.\n" + ex.getMessage(), "User Error", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    private String getPassword(JPasswordField passwordField)
+    {
+        return new String(passwordField.getPassword());
     }
 }
