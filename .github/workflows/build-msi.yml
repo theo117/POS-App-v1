@@ -1,0 +1,40 @@
+name: Build JavaPOS MSI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "POSApp-main/**"
+      - ".github/workflows/build-msi.yml"
+
+jobs:
+  build-msi:
+    name: Build Windows MSI
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Build MSI installer
+        working-directory: POSApp-main
+        shell: cmd
+        run: build-installer-msi.bat < NUL
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JavaPOS-Windows-Installer
+          path: |
+            POSApp-main/installer/*.msi
+            POSApp-main/installer/*.exe
+          if-no-files-found: error
